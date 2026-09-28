@@ -1,0 +1,19 @@
+[project]
+name = "speech-benchmark"
+version = "0.1.0"
+description = "Phase 0 spike: local speech-to-text and text-to-speech speed"
+authors = [
+    { name = "Humberto Vieira", email = "32624386+H1bertto@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "faster-whisper>=1.2",
+    "kokoro-onnx>=0.5",
+    "nvidia-cublas-cu12>=12.9.2.10",
+    "nvidia-cudnn-cu12==9.*",
+    "nvidia-ml-py>=13.615.71",
+    "soundfile>=0.14.0",
+]
+
+[tool.uv]
+package = false

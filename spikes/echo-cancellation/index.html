@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Echo cancellation spike</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, 'Segoe UI', sans-serif;
+        --ok: #1a7f37;
+        --bad: #cf222e;
+        --muted: #6e7781;
+      }
+      body {
+        max-width: 60rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        border: 1px solid #8884;
+        padding: 0.4rem 0.5rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      button {
+        font: inherit;
+        padding: 0.4rem 1rem;
+        margin-right: 0.5rem;
+        cursor: pointer;
+      }
+      .ok {
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .bad {
+        color: var(--bad);
+        font-weight: 600;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      #level {
+        height: 10px;
+        background: #8883;
+        margin: 0.5rem 0 1rem;
+      }
+      #level > div {
+        height: 100%;
+        width: 0;
+        background: #2f6fdb;
+      }
+      pre {
+        background: #8882;
+        padding: 0.75rem;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Echo cancellation spike</h1>
+    <p>
+      Question: when the avatar talks through the speakers, does the browser's echo cancellation
+      keep its voice out of the microphone? If it does, the voice activity detector will not
+      mistake the avatar for the student.
+    </p>
+    <ol>
+      <li>Use <strong>speakers, not headphones</strong>, at a normal conversation volume.</li>
+      <li>Choose <code>speech-sample.wav</code> from this folder (or any speech recording).</li>
+      <li>Click <strong>Run test</strong> and stay quiet. It plays the sample three times.</li>
+      <li>Then click <strong>Talk over it</strong> and speak while it plays, to check your voice survives.</li>
+    </ol>
+
+    <p>
+      <input id="file" type="file" accept="audio/*" />
+      <span id="sample-status" class="muted">No sample loaded.</span>
+    </p>
+    <p>
+      <button id="run" disabled>Run test</button>
+      <button id="talk" disabled>Talk over it</button>
+      <span id="status" class="muted"></span>
+    </p>
+    <div id="level"><div></div></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Microphone setting</th>
+          <th>Applied by the browser</th>
+          <th>Noise floor</th>
+          <th>Echo (90th percentile)</th>
+          <th>Echo above noise</th>
+          <th>Frames a VAD would hear<br /><span class="muted">first second / after</span></th>
+          <th>Recording</th>
+        </tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+
+    <h2>Verdict</h2>
+    <p id="verdict" class="muted">Run the test first.</p>
+
+    <h2>Results to share</h2>
+    <pre id="markdown" class="muted">Run the test first.</pre>
+    <button id="copy" disabled>Copy results</button>
+
+    <script>
+      const FRAME_S = 0.02
+      const SILENCE_S = 1.5
+      const TAIL_S = 0.5
+      const ACTIVE_REFERENCE_DB = -40 // the avatar is "speaking" in frames louder than this
+      const VAD_MARGIN_DB = 10 // a frame this far above the noise floor would trigger a VAD
+      const CONFIGS = [
+        {
+          label: 'No processing',
+          constraints: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        },
+        {
+          label: 'Echo cancellation only',
+          constraints: { echoCancellation: true, noiseSuppression: false, autoGainControl: false }
+        },
+        {
+          label: 'Echo cancellation + noise suppression + auto gain (the app setting)',
+          constraints: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        }
+      ]
+
+      const $ = (id) => document.getElementById(id)
+      let sampleBuffer = null
+      let referenceDb = []
+      const rows = []
+
+      const toDb = (rms) => 20 * Math.log10(Math.max(rms, 1e-8))
+      const rmsOf = (data, start = 0, end = data.length) => {
+        let sum = 0
+        for (let i = start; i < end; i++) sum += data[i] * data[i]
+        return Math.sqrt(sum / Math.max(end - start, 1))
+      }
+      const percentile = (values, p) => {
+        if (!values.length) return NaN
+        const sorted = [...values].sort((a, b) => a - b)
+        return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]
+      }
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      const fmt = (db) => (Number.isFinite(db) ? `${db.toFixed(1)} dB` : 'n/a')
+
+      async function loadSample(arrayBuffer, name) {
+        const ctx = new AudioContext()
+        sampleBuffer = await ctx.decodeAudioData(arrayBuffer)
+        await ctx.close()
+        const data = sampleBuffer.getChannelData(0)
+        const frame = Math.round(FRAME_S * sampleBuffer.sampleRate)
+        referenceDb = []
+        for (let i = 0; i < data.length; i += frame) referenceDb.push(toDb(rmsOf(data, i, i + frame)))
+        $('sample-status').textContent = `${name}: ${sampleBuffer.duration.toFixed(1)} s`
+        $('run').disabled = false
+        $('talk').disabled = false
+      }
+
+      async function measure(config) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { ...config.constraints, channelCount: 1 }
+        })
+        const applied = stream.getAudioTracks()[0].getSettings()
+        const ctx = new AudioContext()
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 1024
+        ctx.createMediaStreamSource(stream).connect(analyser)
+        const recorder = new MediaRecorder(stream)
+        const chunks = []
+        recorder.ondataavailable = (event) => chunks.push(event.data)
+        recorder.start()
+
+        const buffer = new Float32Array(analyser.fftSize)
+        const readDb = () => {
+          analyser.getFloatTimeDomainData(buffer)
+          const db = toDb(rmsOf(buffer))
+          $('level').firstElementChild.style.width = `${Math.max(0, Math.min(100, db + 90))}%`
+          return db
+        }
+
+        const floor = []
+        const floorEnd = performance.now() + SILENCE_S * 1000
+        while (performance.now() < floorEnd) {
+          floor.push(readDb())
+          await sleep(FRAME_S * 1000)
+        }
+
+        const source = ctx.createBufferSource()
+        source.buffer = sampleBuffer
+        source.connect(ctx.destination)
+        const startedAt = ctx.currentTime + 0.05
+        source.start(startedAt)
+        const echo = []
+        const playEnd = startedAt + sampleBuffer.duration + TAIL_S
+        while (ctx.currentTime < playEnd) {
+          const t = ctx.currentTime - startedAt
+          const db = readDb()
+          const reference = referenceDb[Math.floor(t / FRAME_S)]
+          if (t >= 0 && reference > ACTIVE_REFERENCE_DB) echo.push({ t, db })
+          await sleep(FRAME_S * 1000)
+        }
+
+        recorder.stop()
+        await new Promise((resolve) => (recorder.onstop = resolve))
+        stream.getTracks().forEach((track) => track.stop())
+        await ctx.close()
+
+        const floorDb = percentile(floor, 0.5)
+        const echoP90 = percentile(
+          echo.map((frame) => frame.db),
+          0.9
+        )
+        const heard = (frames) =>
+          frames.length
+            ? (100 * frames.filter((frame) => frame.db > floorDb + VAD_MARGIN_DB).length) / frames.length
+            : NaN
+        return {
+          label: config.label,
+          applied: `EC ${applied.echoCancellation}, NS ${applied.noiseSuppression}, AGC ${applied.autoGainControl}`,
+          floorDb,
+          echoP90,
+          aboveFloor: echoP90 - floorDb,
+          heardFirst: heard(echo.filter((frame) => frame.t < 1)),
+          heardAfter: heard(echo.filter((frame) => frame.t >= 1)),
+          recording: URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType }))
+        }
+      }
+
+      function addRow(result) {
+        rows.push(result)
+        const tr = document.createElement('tr')
+        const cells = [
+          result.label,
+          result.applied,
+          fmt(result.floorDb),
+          fmt(result.echoP90),
+          fmt(result.aboveFloor),
+          Number.isFinite(result.heardFirst)
+            ? `${result.heardFirst.toFixed(0)}% / ${result.heardAfter.toFixed(0)}%`
+            : 'n/a'
+        ]
+        for (const text of cells) {
+          const td = document.createElement('td')
+          td.textContent = text
+          tr.append(td)
+        }
+        const td = document.createElement('td')
+        const audio = document.createElement('audio')
+        audio.controls = true
+        audio.src = result.recording
+        td.append(audio)
+        tr.append(td)
+        $('results').append(tr)
+      }
+
+      function showVerdict() {
+        const app = rows.find((row) => row.label.includes('app setting'))
+        if (!app) return
+        const works = app.heardAfter < 5 && app.aboveFloor < VAD_MARGIN_DB
+        $('verdict').className = works ? 'ok' : 'bad'
+        $('verdict').textContent = works
+          ? 'Echo cancellation works: after it adapts, the avatar voice stays near the noise floor.'
+          : 'Echo leaks into the microphone: conversation mode needs a fallback (higher VAD threshold while speaking, or headphones).'
+        const lines = [
+          `Browser: ${navigator.userAgent}`,
+          '',
+          '| Setting | Applied | Noise floor | Echo p90 | Echo above noise | VAD frames (first s / after) |',
+          '|---|---|---|---|---|---|',
+          ...rows.map(
+            (row) =>
+              `| ${row.label} | ${row.applied} | ${fmt(row.floorDb)} | ${fmt(row.echoP90)} | ${fmt(row.aboveFloor)} | ${row.heardFirst?.toFixed(0)}% / ${row.heardAfter?.toFixed(0)}% |`
+          ),
+          '',
+          `Verdict: ${$('verdict').textContent}`
+        ]
+        $('markdown').textContent = lines.join('\n')
+        $('markdown').className = ''
+        $('copy').disabled = false
+      }
+
+      async function runAll() {
+        $('run').disabled = $('talk').disabled = true
+        try {
+          for (const [index, config] of CONFIGS.entries()) {
+            $('status').textContent = `Stay quiet: run ${index + 1} of ${CONFIGS.length} (${config.label})`
+            addRow(await measure(config))
+          }
+          showVerdict()
+          $('status').textContent = 'Done. Listen to the recordings to hear what the microphone got.'
+        } catch (error) {
+          $('status').textContent = `Error: ${error.message}`
+        } finally {
+          $('run').disabled = $('talk').disabled = false
+        }
+      }
+
+      async function talkOverIt() {
+        $('run').disabled = $('talk').disabled = true
+        try {
+          $('status').textContent = 'Speak now, while the sample plays.'
+          const result = await measure({ ...CONFIGS[2], label: 'Talk over it (app setting)' })
+          addRow(result)
+          $('status').textContent =
+            'Done. Your voice should be clear in the last recording, with little of the sample.'
+        } catch (error) {
+          $('status').textContent = `Error: ${error.message}`
+        } finally {
+          $('run').disabled = $('talk').disabled = false
+        }
+      }
+
+      $('file').addEventListener('change', async (event) => {
+        const file = event.target.files[0]
+        if (file) await loadSample(await file.arrayBuffer(), file.name)
+      })
+      $('run').addEventListener('click', runAll)
+      $('talk').addEventListener('click', talkOverIt)
+      $('copy').addEventListener('click', () => navigator.clipboard.writeText($('markdown').textContent))
+
+      // When the page is served over http, load the sample automatically.
+      if (location.protocol.startsWith('http')) {
+        fetch('speech-sample.wav')
+          .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject()))
+          .then((data) => loadSample(data, 'speech-sample.wav'))
+          .catch(() => {})
+      }
+    </script>
+  </body>
+</html>
