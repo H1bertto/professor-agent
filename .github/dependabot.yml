@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+    groups:
+      desktop-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /core
+    schedule:
+      interval: weekly
+    groups:
+      core-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
