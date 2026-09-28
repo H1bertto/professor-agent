@@ -1,0 +1,36 @@
+appId: io.github.h1bertto.professoragent
+productName: Professor Agent
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!{electron.vite.config,vitest.config}.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+win:
+  executableName: professor-agent
+nsis:
+  artifactName: professor-agent-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSMicrophoneUsageDescription: Professor Agent uses the microphone to hear you during lessons.
+  notarize: false
+dmg:
+  artifactName: professor-agent-${version}.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+  maintainer: Humberto Vieira
+  category: Education
+appImage:
+  artifactName: professor-agent-${version}.${ext}
+npmRebuild: false
