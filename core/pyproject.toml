@@ -1,0 +1,38 @@
+[project]
+name = "professor-core"
+version = "0.1.0"
+description = "Local voice pipeline and WebSocket server for Professor Agent"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Humberto Vieira", email = "32624386+H1bertto@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+professor-core = "professor_core:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
