@@ -1,0 +1,60 @@
+# Roadmap
+
+Professor Agent is built in small phases. Each phase ends with something that works and can be shown.
+
+## Core
+
+### Phase 0: Foundation and risk checks
+- [ ] Repository with open source files, CI, and the two apps scaffolded
+- [ ] Spike: does Chromium echo cancellation remove the avatar's own voice from the microphone?
+- [ ] Spike: speech-to-text speed and GPU memory with faster-whisper on a mid-range GPU
+- [ ] ADR 0001 with the architecture and stack
+
+### Phase 1: Avatar overlay (no AI yet)
+- [ ] Transparent, always-on-top, click-through window
+- [ ] Pixel hit test so only the avatar receives clicks
+- [ ] Shared avatar interface, with a VRM (3D) renderer and a PNGTuber (2D) renderer
+- [ ] Idle animation: blink, breathing, look at the cursor
+- [ ] Drag to move, scroll to resize, tray menu
+
+### Phase 2: Text chat with your AI provider
+- [ ] Python core with FastAPI and a local WebSocket
+- [ ] Provider settings screen: OpenAI-compatible APIs and Anthropic
+- [ ] API keys stored in the operating system credential store
+- [ ] LLM output format with emotion tags and language spans
+- [ ] Streaming answer bubble and avatar expressions
+
+### Phase 3: Voice with a hotkey
+- [ ] Microphone capture with echo cancellation, streamed as 16 kHz PCM
+- [ ] Voice activity detection, speech-to-text, sentence splitting, text-to-speech
+- [ ] Portuguese and English: detection limited to the lesson languages, voice switched per language span
+- [ ] Lip sync and subtitles
+- [ ] Latency measured per stage
+
+### Phase 4: Conversation mode
+- [ ] Always-on microphone with turn detection
+- [ ] Interruptions: stop speaking, cancel generation, keep only what was heard in memory
+- [ ] Listening, thinking, and speaking states on the avatar
+
+### Phase 5: Professor v1
+- [ ] Student profile: native language, subjects, level, goals, correction style
+- [ ] Lesson types: conversation practice and subject tutor
+- [ ] Correction cards and a board panel
+- [ ] Session summary and local progress memory
+
+### Phase 6: Windows package
+- [ ] Installer that bundles the Python core
+- [ ] First-run setup: provider, model downloads, microphone test, avatar
+- [ ] CPU fallback when there is no GPU
+
+## Later
+
+- Live2D renderer
+- Local LLMs (Ollama, LM Studio, llama.cpp)
+- Review sessions with spaced repetition
+- Pronunciation feedback
+- Study from your own material (PDF and notes)
+- Screen context: ask about what you are reading or watching
+- Custom wake words
+- Same voice in every language
+- Avatar generated from an image
