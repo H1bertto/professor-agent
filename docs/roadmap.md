@@ -5,10 +5,10 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 ## Core
 
 ### Phase 0: Foundation and risk checks
-- [ ] Repository with open source files, CI, and the two apps scaffolded
-- [ ] Spike: does Chromium echo cancellation remove the avatar's own voice from the microphone?
-- [ ] Spike: speech-to-text speed and GPU memory with faster-whisper on a mid-range GPU
-- [ ] ADR 0001 with the architecture and stack
+- [x] Repository with open source files, CI, and the two apps scaffolded
+- [ ] Spike: does Chromium echo cancellation remove the avatar's own voice from the microphone? (test page ready, waiting for a run on Windows)
+- [x] Spike: speech-to-text speed and GPU memory with faster-whisper on a mid-range GPU ([results](../spikes/speech-benchmark/RESULTS.md))
+- [x] ADR 0001 with the architecture and stack
 
 ### Phase 1: Avatar overlay (no AI yet)
 - [ ] Transparent, always-on-top, click-through window
