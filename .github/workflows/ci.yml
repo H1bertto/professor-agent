@@ -33,12 +33,10 @@ jobs:
   desktop:
     name: Desktop (Electron)
     runs-on: ubuntu-latest
+    # Electron downloads its binary only when something runs it, and these steps never do.
     defaults:
       run:
         working-directory: apps/desktop
-    env:
-      # Lint, tests, and bundling do not need the Electron binary.
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

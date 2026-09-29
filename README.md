@@ -37,7 +37,7 @@ Your audio and transcripts stay on your computer. The only data that leaves it i
 
 ## Development
 
-You need Node.js 22 or newer and [uv](https://docs.astral.sh/uv/). uv installs the right Python version for you.
+You need Node.js 22.12 or newer and [uv](https://docs.astral.sh/uv/). uv installs the right Python version for you.
 
 ```bash
 # Python core

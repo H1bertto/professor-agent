@@ -1,13 +1,40 @@
 version: 2
 updates:
-  # Major versions of the toolchain (TypeScript, Vite, Electron, and others) must move together,
-  # so they are upgraded on purpose in their own pull request. Security updates still arrive.
+  # Major versions of the build toolchain must move together, so they are upgraded on purpose in
+  # their own pull request. Security updates still arrive.
+  #
+  # Electron is left out of this list on purpose: only its latest three major versions get
+  # security fixes, and a new one ships every eight weeks, so its major updates must keep coming.
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule:
       interval: weekly
     ignore:
-      - dependency-name: '*'
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vite'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vitest'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'electron-vite'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'electron-builder'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@vitejs/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@electron-toolkit/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'prettier'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'three'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@pixiv/*'
         update-types: ['version-update:semver-major']
     groups:
       desktop-minor-and-patch:
