@@ -1,9 +1,14 @@
 version: 2
 updates:
+  # Major versions of the toolchain (TypeScript, Vite, Electron, and others) must move together,
+  # so they are upgraded on purpose in their own pull request. Security updates still arrive.
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       desktop-minor-and-patch:
         update-types: [minor, patch]
@@ -12,6 +17,9 @@ updates:
     directory: /core
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       core-minor-and-patch:
         update-types: [minor, patch]
