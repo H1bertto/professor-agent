@@ -16,8 +16,8 @@ const HIT_ALPHA = 24
 /** Vertical field of view of the bust shot, in degrees. */
 const FIELD_OF_VIEW = 20
 /** Camera distance and how far below the head joint the shot is centered, in meters. */
-const CAMERA_DISTANCE = 2
-const FOCUS_BELOW_HEAD = 0.12
+const CAMERA_DISTANCE = 2.2
+const FOCUS_BELOW_HEAD = 0.06
 /** Upper arms rotated down from the T-pose into a relaxed pose, in radians. */
 const ARMS_DOWN = 1.2
 
