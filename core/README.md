@@ -37,3 +37,9 @@ uv run pytest
 ```
 
 The tests run against a local fake of the OpenAI and Anthropic APIs (`tests/fake_provider.py`), so they never use the network or credit.
+
+The fake also runs alone, to try the desktop app without a real provider. See the development helpers in [`apps/desktop/README.md`](../apps/desktop/README.md#development-helpers).
+
+```bash
+uv run python tests/fake_provider.py 8790
+```
