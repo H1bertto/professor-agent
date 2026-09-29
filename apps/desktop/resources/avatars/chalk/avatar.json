@@ -1,0 +1,37 @@
+{
+  "format": "professor-agent/pngtuber",
+  "version": 1,
+  "name": "Chalk",
+  "emotions": {
+    "neutral": {
+      "idle": "neutral.svg",
+      "talking": "neutral-talking.svg",
+      "blinking": "neutral-blinking.svg"
+    },
+    "happy": {
+      "idle": "happy.svg",
+      "talking": "happy-talking.svg",
+      "blinking": "happy-blinking.svg"
+    },
+    "sad": {
+      "idle": "sad.svg",
+      "talking": "sad-talking.svg",
+      "blinking": "sad-blinking.svg"
+    },
+    "angry": {
+      "idle": "angry.svg",
+      "talking": "angry-talking.svg",
+      "blinking": "angry-blinking.svg"
+    },
+    "surprised": {
+      "idle": "surprised.svg",
+      "talking": "surprised-talking.svg",
+      "blinking": "surprised-blinking.svg"
+    },
+    "relaxed": {
+      "idle": "relaxed.svg",
+      "talking": "relaxed-talking.svg",
+      "blinking": "relaxed-blinking.svg"
+    }
+  }
+}
