@@ -62,7 +62,12 @@ export function handleAvatarProtocol(roots: AvatarRoots): void {
     const file = resolveAvatarPath(request.url, roots)
     if (!file) return new Response('Not found', { status: 404 })
 
-    const response = await net.fetch(pathToFileURL(file).toString())
+    let response: Response
+    try {
+      response = await net.fetch(pathToFileURL(file).toString())
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
     const headers = new Headers(response.headers)
     // The overlay page reads avatar pixels for hit testing, which needs CORS approval.
     headers.set('Access-Control-Allow-Origin', '*')

@@ -63,22 +63,27 @@ function startInteraction(): void {
     if (!overWindow) pointer = null
   })
 
+  let dragging = false
   stage.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || !clickThrough.interactive) return
+    if (event.button !== 0 || !clickThrough.interactive || dragging) return
+    dragging = true
     stage.setPointerCapture(event.pointerId)
     clickThrough.hold(true)
     document.body.classList.add('dragging')
     overlay.startDrag()
   })
   const endDrag = (event: PointerEvent): void => {
-    if (!stage.hasPointerCapture(event.pointerId)) return
-    stage.releasePointerCapture(event.pointerId)
+    if (!dragging) return
+    dragging = false
+    if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId)
     clickThrough.hold(false)
     document.body.classList.remove('dragging')
     overlay.endDrag()
   }
   stage.addEventListener('pointerup', endDrag)
   stage.addEventListener('pointercancel', endDrag)
+  // Windows can take the pointer away mid-drag (Alt+Tab, for example) without a pointerup.
+  stage.addEventListener('lostpointercapture', endDrag)
 
   let lastResize = 0
   stage.addEventListener(
