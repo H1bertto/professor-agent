@@ -15,7 +15,7 @@ spikes/         Short experiments that answer one technical question
 
 ## Setup
 
-You need Node.js 22 or newer and [uv](https://docs.astral.sh/uv/).
+You need Node.js 22.12 or newer and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 # Python core
