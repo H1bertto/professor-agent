@@ -30,7 +30,7 @@ Responses use the id of the `user.text` message that started them.
 | `user.text` | `id`, `text` | A question from the student |
 | `response.cancel` | `id` | Stops the response for this id |
 
-`provider` is `{ kind, baseUrl, model, apiKey }`. `kind` is `anthropic` or `openai-compatible`. `baseUrl` is required for `openai-compatible` and `null` for `anthropic`.
+`provider` is `{ kind, baseUrl, model, apiKey }`. `kind` is `anthropic` or `openai-compatible`. `baseUrl` is required for `openai-compatible`. For `anthropic` it is usually `null`, which means the official API. It must use `https`, or `http` on localhost.
 
 `persona` is `{ name, instructions }`. `instructions` adds to the built-in teacher prompt.
 
