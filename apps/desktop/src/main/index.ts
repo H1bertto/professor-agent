@@ -7,7 +7,12 @@ import { handleAvatarProtocol, registerAvatarScheme } from './avatar-protocol'
 import { createCompanionWindows } from './companion-windows'
 import { CoreClient, coreSocketUrl, coreToken } from './core-client'
 import { startCursorTracking } from './cursor-tracker'
-import { devAvatarOverride, scheduleOverlayCapture } from './debug-capture'
+import {
+  devAvatarOverride,
+  devProviderOverride,
+  scheduleDevAsk,
+  scheduleOverlayCapture
+} from './debug-capture'
 import { KeyVault } from './key-vault'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
@@ -54,7 +59,9 @@ async function start(): Promise<void> {
   })
   core.onStatus(() => sendToSettingsWindow(IpcChannel.coreStatusChanged, coreStatus()))
   // The client keeps this until the core is ready, and sends it again after every reconnection.
-  core.send(tutorSettings.configureMessage())
+  const devProvider = devProviderOverride()
+  const configure = tutorSettings.configureMessage()
+  core.send(devProvider ? { ...configure, provider: devProvider } : configure)
   core.start()
   registerSettingsHandlers(tutorSettings, coreStatus)
 
@@ -63,7 +70,6 @@ async function start(): Promise<void> {
 
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
   registerOverlayControls(overlay, (overlayBounds) => settings.update({ overlayBounds }))
-  scheduleOverlayCapture(overlay)
   const stopCursorTracking = startCursorTracking(overlay)
 
   const sendToOverlay = (channel: string, payload: unknown): void => {
@@ -123,6 +129,8 @@ async function start(): Promise<void> {
     ask: (question) => tutor.ask(question),
     cancel: () => tutor.cancel()
   })
+  scheduleOverlayCapture(overlay, companions.bubbleWindow)
+  scheduleDevAsk(core, (question) => tutor.ask(question))
 
   const tray = createTray({
     state: () => ({

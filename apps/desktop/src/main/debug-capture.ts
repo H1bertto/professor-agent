@@ -1,7 +1,8 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import { writeFile } from 'fs/promises'
-import { IpcChannel } from '../shared/api'
+import { IpcChannel, type CoreConnectionStatus } from '../shared/api'
 import type { AvatarChoice } from '../shared/avatar'
+import type { ProviderConfig } from '../shared/core-protocol'
 import { findBuiltinAvatar } from './avatar-library'
 
 /**
@@ -14,19 +15,68 @@ export function devAvatarOverride(env = process.env): AvatarChoice | null {
 }
 
 /**
+ * Development helper: PROFESSOR_DEV_PROVIDER=<provider JSON> replaces the saved provider, for
+ * example with the fake provider of the core tests (`uv run python tests/fake_provider.py`).
+ * Packaged builds ignore it.
+ */
+export function devProviderOverride(env = process.env): ProviderConfig | null {
+  if (app.isPackaged || !env.PROFESSOR_DEV_PROVIDER) return null
+  try {
+    const value: unknown = JSON.parse(env.PROFESSOR_DEV_PROVIDER)
+    if (isProviderConfig(value)) return value
+  } catch {
+    // Reported below.
+  }
+  console.warn('PROFESSOR_DEV_PROVIDER is not a valid provider, so the app ignores it.')
+  return null
+}
+
+/**
+ * Development helper: PROFESSOR_DEV_ASK=<question> asks it once, when the avatar is on screen
+ * and the core is online. Packaged builds ignore it.
+ */
+export function scheduleDevAsk(
+  core: {
+    readonly currentStatus: CoreConnectionStatus
+    onStatus(listener: (status: CoreConnectionStatus) => void): () => void
+  },
+  ask: (question: string) => void,
+  env = process.env
+): void {
+  const question = env.PROFESSOR_DEV_ASK
+  if (app.isPackaged || !question) return
+  // The configuration goes out right after ready, so a short wait lets it arrive first.
+  const askSoon = (): void => void setTimeout(() => ask(question), 500)
+  ipcMain.once(IpcChannel.overlayReady, () => {
+    if (core.currentStatus === 'online') return askSoon()
+    const stop = core.onStatus((status) => {
+      if (status !== 'online') return
+      stop()
+      askSoon()
+    })
+  })
+}
+
+/**
  * Development helper to check the overlay without recording the whole screen.
  *
  * - PROFESSOR_CAPTURE_OVERLAY=<file.png> saves what the overlay page renders.
  * - PROFESSOR_CAPTURE_SCREEN=<file.png> saves the screen area under the overlay window only,
  *   to check that the transparency blends with the apps behind it.
+ * - PROFESSOR_CAPTURE_BUBBLE=<file.png> saves what the answer bubble page renders.
  * - PROFESSOR_CAPTURE_EXIT=1 quits the app after the captures.
  *
  * Captures run a moment after the avatar is ready. Packaged builds ignore these variables.
  */
-export function scheduleOverlayCapture(window: BrowserWindow, env = process.env): void {
+export function scheduleOverlayCapture(
+  window: BrowserWindow,
+  bubble: BrowserWindow,
+  env = process.env
+): void {
   const pageTarget = env.PROFESSOR_CAPTURE_OVERLAY
   const screenTarget = env.PROFESSOR_CAPTURE_SCREEN
-  if ((!pageTarget && !screenTarget) || app.isPackaged) return
+  const bubbleTarget = env.PROFESSOR_CAPTURE_BUBBLE
+  if ((!pageTarget && !screenTarget && !bubbleTarget) || app.isPackaged) return
 
   const delayMs = Number(env.PROFESSOR_CAPTURE_DELAY_MS ?? 2000)
   ipcMain.once(IpcChannel.overlayReady, () => {
@@ -36,6 +86,13 @@ export function scheduleOverlayCapture(window: BrowserWindow, env = process.env)
         await writeFile(pageTarget, image.toPNG())
       }
       if (screenTarget) await captureScreenUnderWindow(window, screenTarget)
+      if (bubbleTarget) {
+        const image = await bubble.webContents.capturePage()
+        await writeFile(bubbleTarget, image.toPNG())
+        console.log(
+          `Bubble captured, visible ${bubble.isVisible()}, bounds ${JSON.stringify(bubble.getBounds())}`
+        )
+      }
       console.log(`Overlay captured, bounds ${JSON.stringify(window.getBounds())}`)
       if (env.PROFESSOR_CAPTURE_EXIT === '1') app.quit()
     }, delayMs)
@@ -63,4 +120,15 @@ async function captureScreenUnderWindow(window: BrowserWindow, target: string): 
     height: Math.round(bounds.height * scale)
   })
   await writeFile(target, region.toPNG())
+}
+
+function isProviderConfig(value: unknown): value is ProviderConfig {
+  if (typeof value !== 'object' || value === null) return false
+  const { kind, baseUrl, model, apiKey } = value as Record<string, unknown>
+  return (
+    (kind === 'anthropic' || kind === 'openai-compatible') &&
+    (baseUrl === null || typeof baseUrl === 'string') &&
+    typeof model === 'string' &&
+    typeof apiKey === 'string'
+  )
 }

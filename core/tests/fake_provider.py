@@ -52,9 +52,9 @@ class RecordedRequest:
 
 
 class FakeProvider:
-    def __init__(self) -> None:
+    def __init__(self, port: int | None = None) -> None:
         self.requests: list[RecordedRequest] = []
-        self.port = _free_port()
+        self.port = port or _free_port()
         self.app = FastAPI()
         self._add_routes()
         self._server: uvicorn.Server | None = None
@@ -276,3 +276,13 @@ def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+if __name__ == "__main__":
+    # Try the desktop app without a real provider or credit:
+    #   uv run python tests/fake_provider.py [port]
+    import sys
+
+    fake = FakeProvider(int(sys.argv[1]) if len(sys.argv) > 1 else 8790)
+    print(f"Fake provider at {fake.openai_base_url}, models gpt-fake and {SLOW_MODEL}")
+    uvicorn.run(fake.app, host="127.0.0.1", port=fake.port, log_level="warning")

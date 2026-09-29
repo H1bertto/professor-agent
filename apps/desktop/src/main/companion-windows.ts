@@ -18,6 +18,8 @@ export interface CompanionWindows {
   /** Opens the question box beside the avatar, or closes it if it is open. */
   toggleAsk(): void
   showAnswer(answer: Answer): void
+  /** For the development captures in debug-capture.ts. */
+  readonly bubbleWindow: BrowserWindow
 }
 
 /**
@@ -105,6 +107,7 @@ export function createCompanionWindows(
 
   return {
     toggleAsk,
+    bubbleWindow: bubble,
     showAnswer: (answer) => {
       if (bubble.isDestroyed()) return
       if (answer.id !== answerId) {
