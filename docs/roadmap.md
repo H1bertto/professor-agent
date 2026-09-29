@@ -6,7 +6,7 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 
 ### Phase 0: Foundation and risk checks
 - [x] Repository with open source files, CI, and the two apps scaffolded
-- [ ] Spike: does Chromium echo cancellation remove the avatar's own voice from the microphone? (test page ready, waiting for a run on Windows)
+- [x] Spike: does Chromium echo cancellation remove the avatar's own voice from the microphone? Inconclusive with speakers, so conversation mode starts with headphones ([results](../spikes/echo-cancellation/README.md#results))
 - [x] Spike: speech-to-text speed and GPU memory with faster-whisper on a mid-range GPU ([results](../spikes/speech-benchmark/RESULTS.md))
 - [x] ADR 0001 with the architecture and stack
 
@@ -27,12 +27,13 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 ### Phase 3: Voice with a hotkey
 - [ ] Microphone capture with echo cancellation, streamed as 16 kHz PCM
 - [ ] Voice activity detection, speech-to-text, sentence splitting, text-to-speech
-- [ ] Portuguese and English: detection limited to the lesson languages, voice switched per language span
+- [ ] Portuguese and English: language set by the lesson (detection only in free talk), voice switched per language span
 - [ ] Lip sync and subtitles
 - [ ] Latency measured per stage
 
 ### Phase 4: Conversation mode
-- [ ] Always-on microphone with turn detection
+- [ ] Always-on microphone with turn detection, headphones first
+- [ ] Speaker fallback: higher VAD threshold or half duplex while the avatar speaks
 - [ ] Interruptions: stop speaking, cancel generation, keep only what was heard in memory
 - [ ] Listening, thinking, and speaking states on the avatar
 
