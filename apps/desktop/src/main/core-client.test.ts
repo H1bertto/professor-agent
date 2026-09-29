@@ -2,8 +2,9 @@ import type { AddressInfo } from 'net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer, type WebSocket } from 'ws'
 
+import type { CoreConnectionStatus } from '../shared/api'
 import type { ClientMessage, CoreMessage } from '../shared/core-protocol'
-import { CoreClient, coreSocketUrl, coreToken, type CoreConnectionStatus } from './core-client'
+import { CoreClient, coreSocketUrl, coreToken } from './core-client'
 
 /** A tiny stand-in for the Python core. */
 class FakeCore {
@@ -109,7 +110,9 @@ describe('CoreClient', () => {
     coreClient.onStatus((status) => statuses.push(status))
     coreClient.start()
 
+    expect(coreClient.coreVersion).toBeNull()
     await until(() => coreClient.currentStatus === 'online')
+    expect(coreClient.coreVersion).toBe('0.1.0')
     expect(core.received[0]).toEqual({
       type: 'hello',
       protocol: 1,
@@ -206,6 +209,7 @@ describe('core address', () => {
   it('uses the port and token from the environment', () => {
     expect(coreSocketUrl({})).toBe('ws://127.0.0.1:8765/ws')
     expect(coreSocketUrl({ PROFESSOR_CORE_PORT: '9000' })).toBe('ws://127.0.0.1:9000/ws')
+    expect(coreSocketUrl({ PROFESSOR_CORE_PORT: '80@evil.example' })).toBe('ws://127.0.0.1:8765/ws')
     expect(coreToken({})).toBeNull()
     expect(coreToken({ PROFESSOR_CORE_TOKEN: '' })).toBeNull()
     expect(coreToken({ PROFESSOR_CORE_TOKEN: 'abc' })).toBe('abc')

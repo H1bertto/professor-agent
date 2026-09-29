@@ -10,7 +10,13 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 
 // The renderer gets only this small API, never raw ipcRenderer or Node.
 const api: ProfessorApi = {
-  getCoreHealth: () => ipcRenderer.invoke(IpcChannel.coreHealth),
+  settings: {
+    get: () => ipcRenderer.invoke(IpcChannel.settingsGet),
+    save: (form) => ipcRenderer.invoke(IpcChannel.settingsSave, form),
+    testProvider: (provider) => ipcRenderer.invoke(IpcChannel.settingsTestProvider, provider),
+    getCoreStatus: () => ipcRenderer.invoke(IpcChannel.coreStatus),
+    onCoreStatus: (listener) => subscribe(IpcChannel.coreStatusChanged, listener)
+  },
   overlay: {
     getAvatar: () => ipcRenderer.invoke(IpcChannel.avatarGet),
     ready: () => ipcRenderer.send(IpcChannel.overlayReady),

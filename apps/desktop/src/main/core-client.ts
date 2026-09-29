@@ -1,13 +1,13 @@
 import WebSocket from 'ws'
+import type { CoreConnectionStatus } from '../shared/api'
 import {
   parseCoreMessage,
   PROTOCOL_VERSION,
   type ClientMessage,
   type CoreMessage
 } from '../shared/core-protocol'
-import { coreBaseUrl } from './core-health'
 
-export type CoreConnectionStatus = 'connecting' | 'online' | 'offline'
+export const DEFAULT_CORE_PORT = 8765
 
 export interface CoreClientOptions {
   url: string
@@ -22,8 +22,11 @@ type ConfigureMessage = Extract<ClientMessage, { type: 'configure' }>
 
 const DEFAULT_RETRY_DELAYS_MS = [500, 1000, 2000, 5000]
 
+/** The core always listens on localhost. Only the port can change. */
 export function coreSocketUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return `${coreBaseUrl(env).replace(/^http/, 'ws')}/ws`
+  const port = env.PROFESSOR_CORE_PORT
+  const validPort = port && /^\d{1,5}$/.test(port) ? port : String(DEFAULT_CORE_PORT)
+  return `ws://127.0.0.1:${validPort}/ws`
 }
 
 export function coreToken(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -40,6 +43,7 @@ export function coreToken(env: NodeJS.ProcessEnv = process.env): string | null {
 export class CoreClient {
   private socket: WebSocket | null = null
   private status: CoreConnectionStatus = 'offline'
+  private version: string | null = null
   private attempt = 0
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private stopped = true
@@ -51,6 +55,11 @@ export class CoreClient {
 
   get currentStatus(): CoreConnectionStatus {
     return this.status
+  }
+
+  /** The core version from its last `ready`, or `null` before the first connection. */
+  get coreVersion(): string | null {
+    return this.version
   }
 
   start(): void {
@@ -124,6 +133,7 @@ export class CoreClient {
         return
       }
       this.attempt = 0
+      this.version = message.core
       this.setStatus('online')
       if (this.lastConfigure) socket.send(JSON.stringify(this.lastConfigure))
       return

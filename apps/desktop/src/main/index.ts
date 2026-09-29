@@ -1,18 +1,21 @@
-import { app, dialog, globalShortcut, ipcMain, screen } from 'electron'
+import { app, dialog, globalShortcut, ipcMain, screen, type IpcMainInvokeEvent } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { IpcChannel, type AvatarPreview } from '../shared/api'
+import { IpcChannel, type AvatarPreview, type CoreStatus } from '../shared/api'
 import type { AvatarChoice } from '../shared/avatar'
 import { avatarOptions, effectiveAvatar, resolveAvatarConfig } from './avatar-library'
 import { handleAvatarProtocol, registerAvatarScheme } from './avatar-protocol'
-import { checkCoreHealth, coreBaseUrl } from './core-health'
+import { CoreClient, coreSocketUrl, coreToken } from './core-client'
 import { startCursorTracking } from './cursor-tracker'
 import { devAvatarOverride, scheduleOverlayCapture } from './debug-capture'
+import { KeyVault } from './key-vault'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
 import { avatarRoots, settingsFile } from './paths'
 import { SettingsStore } from './settings-store'
-import { showStatusWindow } from './status-window'
+import { isSettingsWindow, sendToSettingsWindow, showSettingsWindow } from './settings-window'
+import { systemCipher } from './system-cipher'
 import { createTray, TOGGLE_OVERLAY_SHORTCUT } from './tray'
+import { TutorSettings } from './tutor-settings'
 import { importPngTuberFolder, importVrm, listUserAvatars } from './user-avatars'
 import { clampToWorkArea, defaultOverlayBounds, overlaySize, type Rect } from './window-bounds'
 
@@ -37,8 +40,23 @@ async function start(): Promise<void> {
   let userAvatars = await listUserAvatars(roots.user)
   let preview: AvatarPreview = { emotion: 'neutral', talking: false }
 
+  const core = new CoreClient({
+    url: coreSocketUrl(),
+    token: coreToken(),
+    clientName: `desktop/${app.getVersion()}`
+  })
+  const tutorSettings = new TutorSettings(settings, new KeyVault(systemCipher), core)
+  const coreStatus = (): CoreStatus => ({
+    connection: core.currentStatus,
+    version: core.coreVersion
+  })
+  core.onStatus(() => sendToSettingsWindow(IpcChannel.coreStatusChanged, coreStatus()))
+  // The client keeps this until the core is ready, and sends it again after every reconnection.
+  core.send(tutorSettings.configureMessage())
+  core.start()
+  registerSettingsHandlers(tutorSettings, coreStatus)
+
   const currentChoice = (): AvatarChoice => devAvatarOverride() ?? settings.get().avatar
-  ipcMain.handle(IpcChannel.coreHealth, () => checkCoreHealth(coreBaseUrl()))
   ipcMain.handle(IpcChannel.avatarGet, () => resolveAvatarConfig(currentChoice(), userAvatars))
 
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
@@ -116,7 +134,7 @@ async function start(): Promise<void> {
       overlay.setBounds(bounds)
       settings.update({ overlayBounds: bounds })
     },
-    showStatus: showStatusWindow,
+    showSettings: showSettingsWindow,
     quit: () => app.quit()
   })
 
@@ -135,11 +153,35 @@ async function start(): Promise<void> {
     if (settingsSaved) return
     event.preventDefault()
     stopCursorTracking()
+    core.stop()
     globalShortcut.unregisterAll()
     settings.flush().finally(() => {
       settingsSaved = true
       app.quit()
     })
+  })
+}
+
+/** The provider settings hold the API key, so only the settings window may reach them. */
+function registerSettingsHandlers(
+  tutorSettings: TutorSettings,
+  coreStatus: () => CoreStatus
+): void {
+  const fromSettingsWindow = (event: IpcMainInvokeEvent): void => {
+    if (!isSettingsWindow(event.sender)) throw new Error('Only the settings window can do this.')
+  }
+  ipcMain.handle(IpcChannel.coreStatus, () => coreStatus())
+  ipcMain.handle(IpcChannel.settingsGet, (event) => {
+    fromSettingsWindow(event)
+    return tutorSettings.view()
+  })
+  ipcMain.handle(IpcChannel.settingsSave, (event, form: unknown) => {
+    fromSettingsWindow(event)
+    return tutorSettings.save(form)
+  })
+  ipcMain.handle(IpcChannel.settingsTestProvider, (event, provider: unknown) => {
+    fromSettingsWindow(event)
+    return tutorSettings.testProvider(provider)
   })
 }
 

@@ -22,7 +22,7 @@ export interface TrayActions {
   previewEmotion(emotion: Emotion): void
   previewTalking(talking: boolean): void
   resetPosition(): void
-  showStatus(): void
+  showSettings(): void
   quit(): void
 }
 
@@ -88,7 +88,7 @@ function menu(actions: TrayActions, refresh: () => void): MenuItemConstructorOpt
     },
     { label: 'Reset position', click: actions.resetPosition },
     { type: 'separator' },
-    { label: 'Status and credits', click: actions.showStatus },
+    { label: 'Settings and credits...', click: actions.showSettings },
     { label: 'Quit', click: actions.quit }
   ]
 }

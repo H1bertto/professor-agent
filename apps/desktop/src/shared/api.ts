@@ -1,9 +1,16 @@
 // Types and channel names shared by the main, preload, and renderer processes.
 
 import type { AvatarConfig, Emotion, LookTarget } from './avatar'
+import type { PersonaConfig } from './core-protocol'
+import type { ProviderPresetId } from './providers'
 
-export type CoreHealth =
-  { status: 'online'; version: string } | { status: 'offline'; reason: string }
+export type CoreConnectionStatus = 'connecting' | 'online' | 'offline'
+
+export interface CoreStatus {
+  connection: CoreConnectionStatus
+  /** The core version, known once the connection is open. */
+  version: string | null
+}
 
 /** Where the mouse cursor is, sent to the overlay while it moves. */
 export interface CursorUpdate {
@@ -19,8 +26,54 @@ export interface AvatarPreview {
   talking: boolean
 }
 
+/** The saved provider as the settings window sees it. The API key never leaves the main process. */
+export interface ProviderView {
+  preset: ProviderPresetId
+  /** Only for the `custom` preset. */
+  baseUrl: string | null
+  model: string
+  /** The last characters of the saved key, such as `...a1b2`, or `null` when there is none. */
+  keyHint: string | null
+}
+
+export interface SettingsView {
+  provider: ProviderView | null
+  persona: PersonaConfig
+  /** Whether the system can encrypt API keys. Without it, keys cannot be saved. */
+  keyStorageAvailable: boolean
+}
+
+/** A provider as the student filled it in. */
+export interface ProviderForm {
+  preset: ProviderPresetId
+  /** Only for the `custom` preset. The others always use their own address. */
+  baseUrl: string | null
+  model: string
+  /** A new key, or `null` to keep the saved one. */
+  apiKey: string | null
+}
+
+export interface SettingsForm {
+  /** `null` removes the provider and its key. */
+  provider: ProviderForm | null
+  persona: PersonaConfig
+}
+
+export type SaveResult = { ok: true; settings: SettingsView } | { ok: false; message: string }
+
+export interface ProviderTestResult {
+  ok: boolean
+  models: string[]
+  /** Why the test failed, in words the student can act on. */
+  message: string | null
+}
+
 export const IpcChannel = {
-  coreHealth: 'core:health',
+  coreStatus: 'core:status',
+  coreStatusChanged: 'core:status-changed',
+  settingsGet: 'settings:get',
+  settingsSave: 'settings:save',
+  settingsTestProvider: 'settings:test-provider',
   avatarGet: 'avatar:get',
   avatarChanged: 'avatar:changed',
   overlayReady: 'overlay:ready',
@@ -50,8 +103,18 @@ export interface OverlayApi {
   resize(steps: number): void
 }
 
+/** Calls available to the settings window. */
+export interface SettingsApi {
+  get(): Promise<SettingsView>
+  save(form: SettingsForm): Promise<SaveResult>
+  /** Checks the provider without saving it, by listing its models. */
+  testProvider(provider: ProviderForm): Promise<ProviderTestResult>
+  getCoreStatus(): Promise<CoreStatus>
+  onCoreStatus(listener: (status: CoreStatus) => void): () => void
+}
+
 /** API that the preload script exposes to the renderer as `window.professor`. */
 export interface ProfessorApi {
-  getCoreHealth(): Promise<CoreHealth>
+  settings: SettingsApi
   overlay: OverlayApi
 }

@@ -1,12 +1,15 @@
 :root {
   color-scheme: light dark;
   --bg: #f7f6f2;
+  --surface: #ffffff;
+  --border: #d0d7de;
   --text: #1f2328;
   --muted: #59636e;
   --accent: #2f6fdb;
+  --on-accent: #ffffff;
   --online: #1a7f37;
   --offline: #cf222e;
-  --checking: #9a6700;
+  --connecting: #9a6700;
   font-family:
     system-ui,
     -apple-system,
@@ -18,12 +21,15 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16181d;
+    --surface: #1f2329;
+    --border: #3d444d;
     --text: #e6edf3;
     --muted: #9198a1;
     --accent: #5b93f0;
+    --on-accent: #0d1117;
     --online: #3fb950;
     --offline: #f85149;
-    --checking: #d29922;
+    --connecting: #d29922;
   }
 }
 
@@ -34,35 +40,41 @@ body {
   user-select: none;
 }
 
+a {
+  color: var(--accent);
+}
+
 .app {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 16px;
+  max-width: 560px;
   min-height: 100vh;
-  padding: 16px;
+  margin: 0 auto;
+  padding: 20px;
   box-sizing: border-box;
 }
 
 h1 {
-  margin: 0;
-  font-size: 1.6rem;
+  margin: 0 0 4px;
+  font-size: 1.5rem;
 }
 
-.subtitle {
+h2 {
   margin: 0 0 12px;
-  color: var(--muted);
+  font-size: 1.05rem;
 }
 
 .status {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 0;
+  color: var(--muted);
 }
 
 .dot {
+  flex: none;
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -76,8 +88,75 @@ h1 {
   background: var(--offline);
 }
 
-.dot-checking {
-  background: var(--checking);
+.dot-connecting {
+  background: var(--connecting);
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+section {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.field > span {
+  font-weight: 600;
+}
+
+.field small {
+  color: var(--muted);
+}
+
+.field .warning {
+  color: var(--connecting);
+}
+
+input,
+select,
+textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  user-select: text;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.notice {
+  margin: 0;
+}
+
+.notice-ok {
+  color: var(--online);
+}
+
+.notice-error {
+  color: var(--offline);
 }
 
 button {
@@ -90,7 +169,23 @@ button {
   cursor: pointer;
 }
 
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+button.danger {
+  border-color: var(--offline);
+  color: var(--offline);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.credits {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
