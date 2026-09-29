@@ -1,23 +1,55 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import { writeFile } from 'fs/promises'
 import { IpcChannel } from '../shared/api'
 
 /**
- * Development helper. When PROFESSOR_CAPTURE_OVERLAY is set to a file path, saves a PNG of the
- * overlay a moment after the avatar is ready. It lets us check the rendering without recording
- * the screen. With PROFESSOR_CAPTURE_EXIT=1, the app quits after the capture.
+ * Development helper to check the overlay without recording the whole screen.
+ *
+ * - PROFESSOR_CAPTURE_OVERLAY=<file.png> saves what the overlay page renders.
+ * - PROFESSOR_CAPTURE_SCREEN=<file.png> saves the screen area under the overlay window only,
+ *   to check that the transparency blends with the apps behind it.
+ * - PROFESSOR_CAPTURE_EXIT=1 quits the app after the captures.
+ *
+ * Captures run a moment after the avatar is ready. Packaged builds ignore these variables.
  */
 export function scheduleOverlayCapture(window: BrowserWindow, env = process.env): void {
-  const target = env.PROFESSOR_CAPTURE_OVERLAY
-  if (!target || app.isPackaged) return
+  const pageTarget = env.PROFESSOR_CAPTURE_OVERLAY
+  const screenTarget = env.PROFESSOR_CAPTURE_SCREEN
+  if ((!pageTarget && !screenTarget) || app.isPackaged) return
 
   const delayMs = Number(env.PROFESSOR_CAPTURE_DELAY_MS ?? 2000)
   ipcMain.once(IpcChannel.overlayReady, () => {
     setTimeout(async () => {
-      const image = await window.webContents.capturePage()
-      await writeFile(target, image.toPNG())
-      console.log(`Overlay captured to ${target} (${JSON.stringify(window.getBounds())})`)
+      if (pageTarget) {
+        const image = await window.webContents.capturePage()
+        await writeFile(pageTarget, image.toPNG())
+      }
+      if (screenTarget) await captureScreenUnderWindow(window, screenTarget)
+      console.log(`Overlay captured, bounds ${JSON.stringify(window.getBounds())}`)
       if (env.PROFESSOR_CAPTURE_EXIT === '1') app.quit()
     }, delayMs)
   })
+}
+
+async function captureScreenUnderWindow(window: BrowserWindow, target: string): Promise<void> {
+  const bounds = window.getBounds()
+  const display = screen.getDisplayMatching(bounds)
+  const scale = display.scaleFactor
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: {
+      width: Math.round(display.size.width * scale),
+      height: Math.round(display.size.height * scale)
+    }
+  })
+  const source = sources.find((item) => item.display_id === String(display.id)) ?? sources[0]
+  if (!source) return
+
+  const region = source.thumbnail.crop({
+    x: Math.round((bounds.x - display.bounds.x) * scale),
+    y: Math.round((bounds.y - display.bounds.y) * scale),
+    width: Math.round(bounds.width * scale),
+    height: Math.round(bounds.height * scale)
+  })
+  await writeFile(target, region.toPNG())
 }
