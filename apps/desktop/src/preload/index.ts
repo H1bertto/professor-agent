@@ -22,12 +22,24 @@ const api: ProfessorApi = {
     ready: () => ipcRenderer.send(IpcChannel.overlayReady),
     onAvatarChanged: (listener) => subscribe(IpcChannel.avatarChanged, listener),
     onCursor: (listener) => subscribe(IpcChannel.overlayCursor, listener),
-    onPreview: (listener) => subscribe(IpcChannel.overlayPreview, listener),
+    onPose: (listener) => subscribe(IpcChannel.overlayPose, listener),
     setInteractive: (interactive) =>
       ipcRenderer.send(IpcChannel.overlaySetInteractive, interactive),
     startDrag: () => ipcRenderer.send(IpcChannel.overlayDragStart),
     endDrag: () => ipcRenderer.send(IpcChannel.overlayDragEnd),
-    resize: (steps) => ipcRenderer.send(IpcChannel.overlayResize, steps)
+    resize: (steps) => ipcRenderer.send(IpcChannel.overlayResize, steps),
+    click: () => ipcRenderer.send(IpcChannel.overlayClick)
+  },
+  ask: {
+    ask: (text) => ipcRenderer.invoke(IpcChannel.askSubmit, text),
+    close: () => ipcRenderer.send(IpcChannel.askClose),
+    onOpened: (listener) => subscribe(IpcChannel.askOpened, listener)
+  },
+  bubble: {
+    onAnswer: (listener) => subscribe(IpcChannel.bubbleAnswer, listener),
+    cancel: () => ipcRenderer.send(IpcChannel.bubbleCancel),
+    dismiss: () => ipcRenderer.send(IpcChannel.bubbleDismiss),
+    resize: (height) => ipcRenderer.send(IpcChannel.bubbleResize, height)
   }
 }
 

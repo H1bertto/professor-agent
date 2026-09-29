@@ -1,10 +1,10 @@
-import type { AvatarPreview } from '../../../shared/api'
+import type { AvatarPose } from '../../../shared/api'
 import type { AvatarConfig } from '../../../shared/avatar'
 import { talkingMouth } from '../avatar/motion'
 import { PngTuberAvatar } from '../avatar/pngtuber/pngtuber-avatar'
 import type { AvatarRenderer } from '../avatar/types'
 import { VrmAvatar } from '../avatar/vrm/vrm-avatar'
-import { createClickThroughController } from './click-through'
+import { createClickThroughController, isClick, type PointerMark } from './click-through'
 import { startFrameLoop } from './frame-loop'
 
 const FRAMES_PER_SECOND = 30
@@ -14,7 +14,7 @@ const stage = document.getElementById('stage') as HTMLDivElement
 const overlay = window.professor.overlay
 
 let avatar: AvatarRenderer | null = null
-let preview: AvatarPreview = { emotion: 'neutral', talking: false }
+let pose: AvatarPose = { state: 'idle', emotion: 'neutral', talking: false }
 let talkingTime = 0
 
 /** Loads the new avatar off screen, then swaps it in, so switching never shows an empty window. */
@@ -29,7 +29,8 @@ async function showAvatar(config: AvatarConfig): Promise<void> {
     next.dispose()
     throw error
   }
-  next.setEmotion(preview.emotion)
+  next.setEmotion(pose.emotion)
+  next.setState(pose.state)
   stage.replaceChildren(canvas)
   avatar?.dispose()
   avatar = next
@@ -64,8 +65,15 @@ function startInteraction(): void {
   })
 
   let dragging = false
+  let press: PointerMark | null = null
+  const mark = (event: PointerEvent): PointerMark => ({
+    x: event.screenX,
+    y: event.screenY,
+    time: event.timeStamp
+  })
   stage.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || !clickThrough.interactive || dragging) return
+    press = mark(event)
     dragging = true
     stage.setPointerCapture(event.pointerId)
     clickThrough.hold(true)
@@ -80,7 +88,12 @@ function startInteraction(): void {
     document.body.classList.remove('dragging')
     overlay.endDrag()
   }
-  stage.addEventListener('pointerup', endDrag)
+  stage.addEventListener('pointerup', (event) => {
+    // A click without a drag opens the question box.
+    if (press && isClick(press, mark(event))) overlay.click()
+    press = null
+    endDrag(event)
+  })
   stage.addEventListener('pointercancel', endDrag)
   // Windows can take the pointer away mid-drag (Alt+Tab, for example) without a pointerup.
   stage.addEventListener('lostpointercapture', endDrag)
@@ -102,7 +115,7 @@ function startInteraction(): void {
 
   startFrameLoop(FRAMES_PER_SECOND, (deltaSeconds) => {
     if (!avatar) return
-    if (preview.talking) {
+    if (pose.talking) {
       talkingTime += deltaSeconds
       avatar.setMouthOpen(talkingMouth(talkingTime))
     }
@@ -117,9 +130,10 @@ async function main(): Promise<void> {
   overlay.onAvatarChanged((config) => {
     showAvatar(config).catch((error) => console.error('Could not switch avatars', error))
   })
-  overlay.onPreview((next) => {
-    preview = next
+  overlay.onPose((next) => {
+    pose = next
     avatar?.setEmotion(next.emotion)
+    avatar?.setState(next.state)
     if (!next.talking) avatar?.setMouthOpen(0)
   })
 

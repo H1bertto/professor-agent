@@ -63,6 +63,44 @@ export function clampToWorkArea(bounds: Rect, workArea: Rect): Rect {
   }
 }
 
+export const BUBBLE_WIDTH = 340
+export const BUBBLE_MIN_HEIGHT = 60
+export const BUBBLE_MAX_HEIGHT = 360
+/** Room for the text field and one line of hints or errors below it. */
+export const ASK_SIZE = { width: 380, height: 88 }
+const COMPANION_GAP = 12
+
+/**
+ * Where the answer bubble and the question box go: beside the avatar, on the side with more
+ * room, near its bottom. The bubble sits above the question box, or below it when the avatar is
+ * close to the top of the screen, so the two never cover each other.
+ */
+export function companionBounds(
+  overlay: Rect,
+  workArea: Rect,
+  bubbleHeight: number
+): { bubble: Rect; ask: Rect } {
+  const width = Math.max(BUBBLE_WIDTH, ASK_SIZE.width)
+  const roomLeft = overlay.x - workArea.x
+  const roomRight = workArea.x + workArea.width - (overlay.x + overlay.width)
+  const onLeft = roomLeft >= width + COMPANION_GAP || roomLeft >= roomRight
+  const besideX = (windowWidth: number): number =>
+    onLeft ? overlay.x - COMPANION_GAP - windowWidth : overlay.x + overlay.width + COMPANION_GAP
+
+  const ask = clampToWorkArea(
+    { x: besideX(ASK_SIZE.width), y: overlay.y + overlay.height - ASK_SIZE.height, ...ASK_SIZE },
+    workArea
+  )
+  const height = Math.min(BUBBLE_MAX_HEIGHT, Math.max(BUBBLE_MIN_HEIGHT, Math.round(bubbleHeight)))
+  const above = ask.y - COMPANION_GAP - height
+  const y = above >= workArea.y ? above : ask.y + ask.height + COMPANION_GAP
+  const bubble = clampToWorkArea(
+    { x: besideX(BUBBLE_WIDTH), y, width: BUBBLE_WIDTH, height },
+    workArea
+  )
+  return { bubble, ask }
+}
+
 /** Grows (positive steps) or shrinks the window, keeping the bottom center in place. */
 export function resizeKeepingBase(bounds: Rect, steps: number): Rect {
   const size = overlaySize(bounds.height * RESIZE_FACTOR ** steps)

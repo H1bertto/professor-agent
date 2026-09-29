@@ -14,6 +14,28 @@ export interface ClickThroughController {
   readonly interactive: boolean
 }
 
+/** Where and when a pointer was pressed or released, in screen pixels and milliseconds. */
+export interface PointerMark {
+  x: number
+  y: number
+  time: number
+}
+
+/**
+ * A press that ends close to where it started, and quickly, is a click rather than a drag. It
+ * uses screen positions, because the window moves with the cursor during a drag.
+ */
+export function isClick(
+  start: PointerMark,
+  end: PointerMark,
+  { maxDistance = 4, maxDurationMs = 300 } = {}
+): boolean {
+  return (
+    Math.hypot(end.x - start.x, end.y - start.y) < maxDistance &&
+    end.time - start.time < maxDurationMs
+  )
+}
+
 /**
  * Decides when the overlay catches the mouse. It turns on at once when the cursor reaches the
  * avatar, and turns off only after the cursor has been away for a moment, so edges and fast

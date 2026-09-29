@@ -1,9 +1,10 @@
 import { app, dialog, globalShortcut, ipcMain, screen, type IpcMainInvokeEvent } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { IpcChannel, type AvatarPreview, type CoreStatus } from '../shared/api'
+import { IpcChannel, type AvatarPose, type CoreStatus } from '../shared/api'
 import type { AvatarChoice } from '../shared/avatar'
 import { avatarOptions, effectiveAvatar, resolveAvatarConfig } from './avatar-library'
 import { handleAvatarProtocol, registerAvatarScheme } from './avatar-protocol'
+import { createCompanionWindows } from './companion-windows'
 import { CoreClient, coreSocketUrl, coreToken } from './core-client'
 import { startCursorTracking } from './cursor-tracker'
 import { devAvatarOverride, scheduleOverlayCapture } from './debug-capture'
@@ -14,7 +15,8 @@ import { avatarRoots, settingsFile } from './paths'
 import { SettingsStore } from './settings-store'
 import { isSettingsWindow, sendToSettingsWindow, showSettingsWindow } from './settings-window'
 import { systemCipher } from './system-cipher'
-import { createTray, TOGGLE_OVERLAY_SHORTCUT } from './tray'
+import { ASK_SHORTCUT, createTray, TOGGLE_OVERLAY_SHORTCUT } from './tray'
+import { Tutor } from './tutor'
 import { TutorSettings } from './tutor-settings'
 import { importPngTuberFolder, importVrm, listUserAvatars } from './user-avatars'
 import { clampToWorkArea, defaultOverlayBounds, overlaySize, type Rect } from './window-bounds'
@@ -38,7 +40,7 @@ async function start(): Promise<void> {
   handleAvatarProtocol(roots)
   const settings = await SettingsStore.load(settingsFile())
   let userAvatars = await listUserAvatars(roots.user)
-  let preview: AvatarPreview = { emotion: 'neutral', talking: false }
+  let pose: AvatarPose = { state: 'idle', emotion: 'neutral', talking: false }
 
   const core = new CoreClient({
     url: coreSocketUrl(),
@@ -101,9 +103,9 @@ async function start(): Promise<void> {
     }
   }
 
-  const setPreview = (changes: Partial<AvatarPreview>): void => {
-    preview = { ...preview, ...changes }
-    sendToOverlay(IpcChannel.overlayPreview, preview)
+  const setPose = (changes: Partial<AvatarPose>): void => {
+    pose = { ...pose, ...changes }
+    sendToOverlay(IpcChannel.overlayPose, pose)
   }
 
   const toggleOverlay = (): void => {
@@ -112,20 +114,31 @@ async function start(): Promise<void> {
     tray.refresh()
   }
 
+  const tutor = new Tutor(core, {
+    answer: (answer) => companions.showAnswer(answer),
+    pose: setPose
+  })
+  const companions = createCompanionWindows(overlay, {
+    teacherName: () => settings.get().persona.name,
+    ask: (question) => tutor.ask(question),
+    cancel: () => tutor.cancel()
+  })
+
   const tray = createTray({
     state: () => ({
       overlayVisible: overlay.isVisible(),
       avatars: avatarOptions(userAvatars),
       currentAvatarId: effectiveAvatar(currentChoice(), userAvatars).id,
-      emotion: preview.emotion,
-      talking: preview.talking
+      emotion: pose.emotion,
+      talking: pose.talking
     }),
+    ask: () => companions.toggleAsk(),
     toggleOverlay,
     selectAvatar,
     importVrm: () => void importAvatar('vrm'),
     importPngTuber: () => void importAvatar('pngtuber'),
-    previewEmotion: (emotion) => setPreview({ emotion }),
-    previewTalking: (talking) => setPreview({ talking }),
+    previewEmotion: (emotion) => setPose({ emotion }),
+    previewTalking: (talking) => setPose({ talking }),
     resetPosition: () => {
       const bounds = defaultOverlayBounds(
         screen.getPrimaryDisplay().workArea,
@@ -138,8 +151,13 @@ async function start(): Promise<void> {
     quit: () => app.quit()
   })
 
-  if (!globalShortcut.register(TOGGLE_OVERLAY_SHORTCUT, toggleOverlay)) {
-    console.warn(`Another app already uses ${TOGGLE_OVERLAY_SHORTCUT}.`)
+  for (const [shortcut, action] of [
+    [TOGGLE_OVERLAY_SHORTCUT, toggleOverlay],
+    [ASK_SHORTCUT, () => companions.toggleAsk()]
+  ] as const) {
+    if (!globalShortcut.register(shortcut, action)) {
+      console.warn(`Another app already uses ${shortcut}.`)
+    }
   }
 
   app.on('second-instance', () => {

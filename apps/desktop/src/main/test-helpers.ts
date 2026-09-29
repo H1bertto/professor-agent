@@ -1,8 +1,9 @@
 // Fakes shared by the main process tests.
 
+import type { CoreConnectionStatus } from '../shared/api'
 import type { ClientMessage, CoreMessage } from '../shared/core-protocol'
 import type { Cipher } from './key-vault'
-import type { CoreConnection } from './tutor-settings'
+import type { TutorCore } from './tutor'
 
 /** Reverses and tags the text, so tests can tell sealed keys from plain ones. */
 export function fakeCipher({ available = true } = {}): Cipher {
@@ -18,10 +19,11 @@ export function fakeCipher({ available = true } = {}): Cipher {
 }
 
 /** Records what the main process sends to the core, and lets tests answer. */
-export class FakeCoreConnection implements CoreConnection {
-  currentStatus: CoreConnection['currentStatus'] = 'online'
+export class FakeCoreConnection implements TutorCore {
+  currentStatus: CoreConnectionStatus = 'online'
   readonly sent: ClientMessage[] = []
   private readonly listeners = new Set<(message: CoreMessage) => void>()
+  private readonly statusListeners = new Set<(status: CoreConnectionStatus) => void>()
   /** Called for each sent message, to answer it. */
   reply: ((message: ClientMessage) => CoreMessage | null) | null = null
 
@@ -44,5 +46,15 @@ export class FakeCoreConnection implements CoreConnection {
 
   emit(message: CoreMessage): void {
     for (const listener of this.listeners) listener(message)
+  }
+
+  onStatus(listener: (status: CoreConnectionStatus) => void): () => void {
+    this.statusListeners.add(listener)
+    return () => this.statusListeners.delete(listener)
+  }
+
+  setStatus(status: CoreConnectionStatus): void {
+    this.currentStatus = status
+    for (const listener of this.statusListeners) listener(status)
   }
 }

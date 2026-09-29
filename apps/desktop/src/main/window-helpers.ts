@@ -2,7 +2,7 @@ import { BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
-export type RendererPage = 'index.html' | 'overlay.html'
+export type RendererPage = 'index.html' | 'overlay.html' | 'ask.html' | 'bubble.html'
 
 export const PRELOAD_PATH = join(__dirname, '../preload/index.js')
 
