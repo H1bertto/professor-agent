@@ -1,12 +1,12 @@
-import { BrowserWindow, ipcMain, screen } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { IpcChannel } from '../shared/api'
-import { defaultOverlayBounds } from './window-bounds'
+import type { Rect } from './window-bounds'
 import { hardenWebContents, loadRendererPage, PRELOAD_PATH } from './window-helpers'
 
 /** The transparent window that shows the avatar on top of every other app. */
-export function createOverlayWindow(): BrowserWindow {
+export function createOverlayWindow(bounds: Rect): BrowserWindow {
   const window = new BrowserWindow({
-    ...defaultOverlayBounds(screen.getPrimaryDisplay().workArea),
+    ...bounds,
     title: 'Professor Agent Overlay',
     show: false,
     frame: false,

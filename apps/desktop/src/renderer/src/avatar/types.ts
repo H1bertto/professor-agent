@@ -1,10 +1,4 @@
-import type { AvatarState, Emotion } from '../../../shared/avatar'
-
-/** A point relative to the overlay window: 0,0 is its center and 1 is one window size away. */
-export interface LookTarget {
-  x: number
-  y: number
-}
+import type { AvatarState, Emotion, LookTarget } from '../../../shared/avatar'
 
 /**
  * Draws an avatar on the overlay canvas. The VRM (3D) and PNGTuber (2D) renderers implement it,

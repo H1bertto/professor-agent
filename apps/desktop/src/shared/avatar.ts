@@ -21,6 +21,15 @@ export interface AvatarConfig {
   url: string
 }
 
+/**
+ * Where the avatar should look, relative to its eyes, in overlay window heights.
+ * 0,0 looks straight ahead, x grows to the right of the screen and y grows downward.
+ */
+export interface LookTarget {
+  x: number
+  y: number
+}
+
 export const AVATAR_ID_PATTERN = /^(builtin|user):[a-z0-9][a-z0-9_-]{0,63}$/
 
 export function isEmotion(value: unknown): value is Emotion {

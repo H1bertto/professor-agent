@@ -43,6 +43,13 @@ function App(): React.JSX.Element {
       <button type="button" onClick={checkAgain} disabled={core.status === 'checking'}>
         Check again
       </button>
+      <p className="credits">
+        3D avatar: Seed-san model by VirtualCast, Inc. (
+        <a href="https://vrm.dev/licenses/1.0/" target="_blank" rel="noreferrer">
+          VRM Public License 1.0
+        </a>
+        )
+      </p>
     </main>
   )
 }
