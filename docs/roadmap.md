@@ -11,11 +11,12 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 - [x] ADR 0001 with the architecture and stack
 
 ### Phase 1: Avatar overlay (no AI yet)
-- [ ] Transparent, always-on-top, click-through window
-- [ ] Pixel hit test so only the avatar receives clicks
-- [ ] Shared avatar interface, with a VRM (3D) renderer and a PNGTuber (2D) renderer
-- [ ] Idle animation: blink, breathing, look at the cursor
-- [ ] Drag to move, scroll to resize, tray menu
+- [x] Transparent, always-on-top, click-through window
+- [x] Pixel hit test so only the avatar receives clicks
+- [x] Shared avatar interface, with a VRM (3D) renderer and a PNGTuber (2D) renderer
+- [x] Idle animation: blink, breathing, look at the cursor
+- [x] Drag to move, scroll to resize, tray menu
+- [x] Import your own VRM or PNGTuber avatar ([guide](avatars.md), [ADR 0002](adr/0002-avatar-overlay.md))
 
 ### Phase 2: Text chat with your AI provider
 - [ ] Python core with FastAPI and a local WebSocket
