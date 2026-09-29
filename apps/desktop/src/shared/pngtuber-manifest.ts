@@ -1,4 +1,4 @@
-import { EMOTIONS, type Emotion } from '../../../../shared/avatar'
+import { EMOTIONS, type Emotion } from './avatar'
 
 export const PNGTUBER_FORMAT = 'professor-agent/pngtuber'
 

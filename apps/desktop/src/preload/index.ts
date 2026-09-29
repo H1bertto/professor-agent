@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IpcChannel, type CursorUpdate, type ProfessorApi } from '../shared/api'
+import { IpcChannel, type ProfessorApi } from '../shared/api'
+
+/** Listens to one channel from the main process, hiding the Electron event from the renderer. */
+function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
+  const handler = (_event: IpcRendererEvent, payload: T): void => listener(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.off(channel, handler)
+}
 
 // The renderer gets only this small API, never raw ipcRenderer or Node.
 const api: ProfessorApi = {
@@ -7,11 +14,9 @@ const api: ProfessorApi = {
   overlay: {
     getAvatar: () => ipcRenderer.invoke(IpcChannel.avatarGet),
     ready: () => ipcRenderer.send(IpcChannel.overlayReady),
-    onCursor: (listener) => {
-      const handler = (_event: IpcRendererEvent, update: CursorUpdate): void => listener(update)
-      ipcRenderer.on(IpcChannel.overlayCursor, handler)
-      return () => ipcRenderer.off(IpcChannel.overlayCursor, handler)
-    },
+    onAvatarChanged: (listener) => subscribe(IpcChannel.avatarChanged, listener),
+    onCursor: (listener) => subscribe(IpcChannel.overlayCursor, listener),
+    onPreview: (listener) => subscribe(IpcChannel.overlayPreview, listener),
     setInteractive: (interactive) =>
       ipcRenderer.send(IpcChannel.overlaySetInteractive, interactive),
     startDrag: () => ipcRenderer.send(IpcChannel.overlayDragStart),

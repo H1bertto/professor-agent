@@ -52,3 +52,10 @@ export function approach(
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
+
+/** A mouth movement that looks like speech: quick syllables inside slower phrases. */
+export function talkingMouth(timeSeconds: number): number {
+  const syllables = Math.abs(Math.sin(timeSeconds * 11))
+  const phrases = 0.5 + 0.5 * Math.sin(timeSeconds * 1.7)
+  return clamp(syllables * (0.35 + 0.65 * phrases), 0, 1)
+}

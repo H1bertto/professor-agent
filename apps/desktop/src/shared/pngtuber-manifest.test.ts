@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parsePngTuberManifest, PNGTUBER_FORMAT } from './manifest'
+import { parsePngTuberManifest, PNGTUBER_FORMAT } from './pngtuber-manifest'
 
 const BASE = {
   format: PNGTUBER_FORMAT,

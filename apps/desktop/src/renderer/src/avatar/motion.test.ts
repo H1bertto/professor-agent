@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { approach, breathing, clamp, createBlinker } from './motion'
+import { approach, breathing, clamp, createBlinker, talkingMouth } from './motion'
 
 function run(blink: (delta: number) => number, seconds: number, step = 0.01): number[] {
   const values: number[] = []
@@ -51,6 +51,16 @@ describe('approach', () => {
     let small = 0
     for (let i = 0; i < 10; i++) small = approach(small, 1, 5, 0.01)
     expect(small).toBeCloseTo(approach(0, 1, 5, 0.1))
+  })
+})
+
+describe('talkingMouth', () => {
+  it('opens and closes the mouth within 0 and 1', () => {
+    const values = Array.from({ length: 300 }, (_, i) => talkingMouth(i * 0.01))
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...values)).toBeLessThanOrEqual(1)
+    expect(Math.max(...values)).toBeGreaterThan(0.6)
+    expect(Math.min(...values)).toBeLessThan(0.1)
   })
 })
 

@@ -1,6 +1,6 @@
 // Types and channel names shared by the main, preload, and renderer processes.
 
-import type { AvatarConfig, LookTarget } from './avatar'
+import type { AvatarConfig, Emotion, LookTarget } from './avatar'
 
 export type CoreHealth =
   { status: 'online'; version: string } | { status: 'offline'; reason: string }
@@ -13,11 +13,19 @@ export interface CursorUpdate {
   overWindow: boolean
 }
 
+/** Lets the student try expressions and talking from the tray menu, before the AI drives them. */
+export interface AvatarPreview {
+  emotion: Emotion
+  talking: boolean
+}
+
 export const IpcChannel = {
   coreHealth: 'core:health',
   avatarGet: 'avatar:get',
+  avatarChanged: 'avatar:changed',
   overlayReady: 'overlay:ready',
   overlayCursor: 'overlay:cursor',
+  overlayPreview: 'overlay:preview',
   overlaySetInteractive: 'overlay:set-interactive',
   overlayDragStart: 'overlay:drag-start',
   overlayDragEnd: 'overlay:drag-end',
@@ -29,8 +37,10 @@ export interface OverlayApi {
   getAvatar(): Promise<AvatarConfig>
   /** The avatar finished loading, so the window can be shown. */
   ready(): void
-  /** Follows the mouse cursor anywhere on the screen. Returns a function that stops listening. */
+  /** Each `on...` call returns a function that stops listening. */
+  onAvatarChanged(listener: (avatar: AvatarConfig) => void): () => void
   onCursor(listener: (update: CursorUpdate) => void): () => void
+  onPreview(listener: (preview: AvatarPreview) => void): () => void
   /** `true` makes the window catch the mouse. `false` lets clicks pass through to other apps. */
   setInteractive(interactive: boolean): void
   /** The window follows the cursor from `startDrag` until `endDrag`. */

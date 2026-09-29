@@ -6,7 +6,7 @@ import {
 } from '../../../../shared/avatar'
 import { approach, breathing, clamp, createBlinker } from '../motion'
 import type { AvatarRenderer } from '../types'
-import { parsePngTuberManifest, type PngTuberFrames } from './manifest'
+import { parsePngTuberManifest, type PngTuberFrames } from '../../../../shared/pngtuber-manifest'
 
 const MAX_PIXEL_RATIO = 2
 /** A pixel with more alpha than this belongs to the avatar. */

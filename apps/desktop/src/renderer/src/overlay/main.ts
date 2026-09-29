@@ -1,4 +1,6 @@
+import type { AvatarPreview } from '../../../shared/api'
 import type { AvatarConfig } from '../../../shared/avatar'
+import { talkingMouth } from '../avatar/motion'
 import { PngTuberAvatar } from '../avatar/pngtuber/pngtuber-avatar'
 import type { AvatarRenderer } from '../avatar/types'
 import { VrmAvatar } from '../avatar/vrm/vrm-avatar'
@@ -11,14 +13,26 @@ const RESIZE_INTERVAL_MS = 80
 const stage = document.getElementById('stage') as HTMLDivElement
 const overlay = window.professor.overlay
 
-async function mountAvatar(config: AvatarConfig): Promise<AvatarRenderer> {
+let avatar: AvatarRenderer | null = null
+let preview: AvatarPreview = { emotion: 'neutral', talking: false }
+let talkingTime = 0
+
+/** Loads the new avatar off screen, then swaps it in, so switching never shows an empty window. */
+async function showAvatar(config: AvatarConfig): Promise<void> {
   // Each renderer gets a fresh canvas, because a canvas keeps its first context type.
   const canvas = document.createElement('canvas')
+  const next = config.kind === 'vrm' ? new VrmAvatar(canvas) : new PngTuberAvatar(canvas)
+  try {
+    next.resize(stage.clientWidth, stage.clientHeight)
+    await next.load(config.url)
+  } catch (error) {
+    next.dispose()
+    throw error
+  }
+  next.setEmotion(preview.emotion)
   stage.replaceChildren(canvas)
-  const avatar = config.kind === 'vrm' ? new VrmAvatar(canvas) : new PngTuberAvatar(canvas)
-  avatar.resize(stage.clientWidth, stage.clientHeight)
-  await avatar.load(config.url)
-  return avatar
+  avatar?.dispose()
+  avatar = next
 }
 
 function showError(error: unknown): void {
@@ -28,8 +42,8 @@ function showError(error: unknown): void {
   stage.replaceChildren(message)
 }
 
-/** Lets the student drag the avatar and resize it with the mouse wheel. */
-function enableMouseControls(avatar: AvatarRenderer): void {
+/** Click-through, drag to move, and the mouse wheel to resize. */
+function startInteraction(): void {
   let pointer: { x: number; y: number } | null = null
   const clickThrough = createClickThroughController({
     onChange: (interactive) => {
@@ -45,7 +59,7 @@ function enableMouseControls(avatar: AvatarRenderer): void {
   )
   document.addEventListener('mouseleave', () => (pointer = null))
   overlay.onCursor(({ look, overWindow }) => {
-    avatar.lookAt(look)
+    avatar?.lookAt(look)
     if (!overWindow) pointer = null
   })
 
@@ -79,7 +93,14 @@ function enableMouseControls(avatar: AvatarRenderer): void {
     { passive: false }
   )
 
+  new ResizeObserver(() => avatar?.resize(stage.clientWidth, stage.clientHeight)).observe(stage)
+
   startFrameLoop(FRAMES_PER_SECOND, (deltaSeconds) => {
+    if (!avatar) return
+    if (preview.talking) {
+      talkingTime += deltaSeconds
+      avatar.setMouthOpen(talkingMouth(talkingTime))
+    }
     avatar.frame(deltaSeconds)
     // The hit test reads the frame that was just drawn.
     clickThrough.update(pointer !== null && avatar.hitTest(pointer.x, pointer.y))
@@ -87,10 +108,18 @@ function enableMouseControls(avatar: AvatarRenderer): void {
 }
 
 async function main(): Promise<void> {
+  startInteraction()
+  overlay.onAvatarChanged((config) => {
+    showAvatar(config).catch((error) => console.error('Could not switch avatars', error))
+  })
+  overlay.onPreview((next) => {
+    preview = next
+    avatar?.setEmotion(next.emotion)
+    if (!next.talking) avatar?.setMouthOpen(0)
+  })
+
   try {
-    const avatar = await mountAvatar(await overlay.getAvatar())
-    new ResizeObserver(() => avatar.resize(stage.clientWidth, stage.clientHeight)).observe(stage)
-    enableMouseControls(avatar)
+    await showAvatar(await overlay.getAvatar())
   } catch (error) {
     console.error(error)
     showError(error)
