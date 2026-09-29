@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IpcChannel, type ProfessorApi } from '../shared/api'
-import type { LookTarget } from '../shared/avatar'
+import { IpcChannel, type CursorUpdate, type ProfessorApi } from '../shared/api'
 
 // The renderer gets only this small API, never raw ipcRenderer or Node.
 const api: ProfessorApi = {
@@ -8,11 +7,16 @@ const api: ProfessorApi = {
   overlay: {
     getAvatar: () => ipcRenderer.invoke(IpcChannel.avatarGet),
     ready: () => ipcRenderer.send(IpcChannel.overlayReady),
-    onLookTarget: (listener) => {
-      const handler = (_event: IpcRendererEvent, target: LookTarget): void => listener(target)
-      ipcRenderer.on(IpcChannel.overlayLookTarget, handler)
-      return () => ipcRenderer.off(IpcChannel.overlayLookTarget, handler)
-    }
+    onCursor: (listener) => {
+      const handler = (_event: IpcRendererEvent, update: CursorUpdate): void => listener(update)
+      ipcRenderer.on(IpcChannel.overlayCursor, handler)
+      return () => ipcRenderer.off(IpcChannel.overlayCursor, handler)
+    },
+    setInteractive: (interactive) =>
+      ipcRenderer.send(IpcChannel.overlaySetInteractive, interactive),
+    startDrag: () => ipcRenderer.send(IpcChannel.overlayDragStart),
+    endDrag: () => ipcRenderer.send(IpcChannel.overlayDragEnd),
+    resize: (steps) => ipcRenderer.send(IpcChannel.overlayResize, steps)
   }
 }
 

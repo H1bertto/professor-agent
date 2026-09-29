@@ -1,8 +1,29 @@
-export interface Rect {
+export interface Point {
   x: number
   y: number
+}
+
+export interface Rect extends Point {
   width: number
   height: number
+}
+
+export function containsPoint(rect: Rect, point: Point): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x < rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y < rect.y + rect.height
+  )
+}
+
+/** Where a dragged window goes: its start position plus how far the cursor moved. */
+export function dragBounds(start: Rect, cursorAtStart: Point, cursorNow: Point): Rect {
+  return {
+    ...start,
+    x: Math.round(start.x + cursorNow.x - cursorAtStart.x),
+    y: Math.round(start.y + cursorNow.y - cursorAtStart.y)
+  }
 }
 
 /** Width divided by height. A bust shot, like a sign language interpreter box. */

@@ -23,6 +23,12 @@
         width: 100%;
         height: 100%;
       }
+      body.interactive #stage {
+        cursor: grab;
+      }
+      body.dragging #stage {
+        cursor: grabbing;
+      }
       .error {
         margin: 12px;
         padding: 8px 12px;

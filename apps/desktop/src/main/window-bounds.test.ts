@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   clampToWorkArea,
+  containsPoint,
   defaultOverlayBounds,
+  dragBounds,
   OVERLAY_MAX_HEIGHT,
   OVERLAY_MIN_HEIGHT,
   overlaySize,
@@ -54,6 +56,29 @@ describe('clampToWorkArea', () => {
   it('pulls a window back from beyond the left and top edges', () => {
     const bounds = { x: -50, y: -80, width: 300, height: 400 }
     expect(clampToWorkArea(bounds, FULL_HD)).toEqual({ x: 0, y: 0, width: 300, height: 400 })
+  })
+})
+
+describe('containsPoint', () => {
+  const rect = { x: 100, y: 100, width: 300, height: 400 }
+
+  it('includes the top-left edge and excludes the bottom-right edge', () => {
+    expect(containsPoint(rect, { x: 100, y: 100 })).toBe(true)
+    expect(containsPoint(rect, { x: 399, y: 499 })).toBe(true)
+    expect(containsPoint(rect, { x: 400, y: 300 })).toBe(false)
+    expect(containsPoint(rect, { x: 200, y: 500 })).toBe(false)
+  })
+})
+
+describe('dragBounds', () => {
+  it('moves the window by how far the cursor moved, keeping its size', () => {
+    const start = { x: 100, y: 100, width: 300, height: 400 }
+    expect(dragBounds(start, { x: 150, y: 150 }, { x: 110, y: 400.6 })).toEqual({
+      x: 60,
+      y: 351,
+      width: 300,
+      height: 400
+    })
   })
 })
 
