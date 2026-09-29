@@ -1,0 +1,9 @@
+{
+  "type": "response.delta",
+  "id": "msg-1",
+  "segments": [
+    { "text": "Boa pergunta! Usamos ", "lang": null },
+    { "text": "since", "lang": "en" },
+    { "text": " para o ponto de partida.", "lang": null }
+  ]
+}

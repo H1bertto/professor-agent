@@ -1,0 +1,8 @@
+{
+  "type": "provider.test.result",
+  "requestId": "test-1",
+  "ok": false,
+  "models": [],
+  "code": "invalid_key",
+  "message": "The provider did not accept this API key."
+}

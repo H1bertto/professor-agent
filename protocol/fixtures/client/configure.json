@@ -1,0 +1,10 @@
+{
+  "type": "configure",
+  "provider": {
+    "kind": "anthropic",
+    "baseUrl": null,
+    "model": "claude-haiku-4-5",
+    "apiKey": "test-key-not-real"
+  },
+  "persona": { "name": "Professor", "instructions": "Use examples about cooking." }
+}
