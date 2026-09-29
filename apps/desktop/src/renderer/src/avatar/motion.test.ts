@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { approach, breathing, clamp, createBlinker, talkingMouth } from './motion'
+import { approach, breathing, clamp, createBlinker, mix, talkingMouth } from './motion'
+
+describe('mix', () => {
+  it('blends between two values and stays within them', () => {
+    expect(mix(0, 10, 0)).toBe(0)
+    expect(mix(0, 10, 0.25)).toBe(2.5)
+    expect(mix(0, 10, 1)).toBe(10)
+    expect(mix(0, 10, 2)).toBe(10)
+    expect(mix(0, 10, -1)).toBe(0)
+  })
+})
 
 function run(blink: (delta: number) => number, seconds: number, step = 0.01): number[] {
   const values: number[] = []
