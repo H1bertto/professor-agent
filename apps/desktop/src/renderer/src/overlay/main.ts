@@ -1,4 +1,5 @@
 import type { AvatarConfig } from '../../../shared/avatar'
+import { PngTuberAvatar } from '../avatar/pngtuber/pngtuber-avatar'
 import type { AvatarRenderer } from '../avatar/types'
 import { VrmAvatar } from '../avatar/vrm/vrm-avatar'
 import { createClickThroughController } from './click-through'
@@ -14,7 +15,7 @@ async function mountAvatar(config: AvatarConfig): Promise<AvatarRenderer> {
   // Each renderer gets a fresh canvas, because a canvas keeps its first context type.
   const canvas = document.createElement('canvas')
   stage.replaceChildren(canvas)
-  const avatar = new VrmAvatar(canvas)
+  const avatar = config.kind === 'vrm' ? new VrmAvatar(canvas) : new PngTuberAvatar(canvas)
   avatar.resize(stage.clientWidth, stage.clientHeight)
   await avatar.load(config.url)
   return avatar

@@ -5,7 +5,7 @@ import { resolveAvatarConfig } from './avatar-library'
 import { handleAvatarProtocol, registerAvatarScheme } from './avatar-protocol'
 import { checkCoreHealth, coreBaseUrl } from './core-health'
 import { startCursorTracking } from './cursor-tracker'
-import { scheduleOverlayCapture } from './debug-capture'
+import { devAvatarOverride, scheduleOverlayCapture } from './debug-capture'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
 import { avatarRoots, settingsFile } from './paths'
@@ -33,7 +33,9 @@ async function start(): Promise<void> {
   const settings = await SettingsStore.load(settingsFile())
 
   ipcMain.handle(IpcChannel.coreHealth, () => checkCoreHealth(coreBaseUrl()))
-  ipcMain.handle(IpcChannel.avatarGet, () => resolveAvatarConfig(settings.get().avatar))
+  ipcMain.handle(IpcChannel.avatarGet, () =>
+    resolveAvatarConfig(devAvatarOverride() ?? settings.get().avatar)
+  )
 
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
   registerOverlayControls(overlay, (overlayBounds) => settings.update({ overlayBounds }))

@@ -1,6 +1,17 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import { writeFile } from 'fs/promises'
 import { IpcChannel } from '../shared/api'
+import type { AvatarChoice } from '../shared/avatar'
+import { findBuiltinAvatar } from './avatar-library'
+
+/**
+ * Development helper: PROFESSOR_AVATAR=<built-in id> (for example `builtin:chalk`) shows that
+ * avatar without changing the saved settings. Packaged builds ignore it.
+ */
+export function devAvatarOverride(env = process.env): AvatarChoice | null {
+  if (app.isPackaged || !env.PROFESSOR_AVATAR) return null
+  return findBuiltinAvatar(env.PROFESSOR_AVATAR)
+}
 
 /**
  * Development helper to check the overlay without recording the whole screen.
