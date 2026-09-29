@@ -54,9 +54,23 @@ def test_openai_compatible_providers_need_a_safe_base_url() -> None:
     base = {"kind": "openai-compatible", "model": "m", "apiKey": "k"}
     with pytest.raises(ValidationError):
         ProviderConfig.model_validate({**base, "baseUrl": None})
-    with pytest.raises(ValidationError):
-        ProviderConfig.model_validate({**base, "baseUrl": "http://example.com/v1"})
-    assert ProviderConfig.model_validate({**base, "baseUrl": "http://localhost:1234/v1"})
+    for unsafe in (
+        "http://example.com/v1",
+        "http://localhost.example.com/v1",
+        "http://127.0.0.1.example.com/v1",
+        "ftp://localhost/v1",
+        "https://",
+        "not a url",
+    ):
+        with pytest.raises(ValidationError):
+            ProviderConfig.model_validate({**base, "baseUrl": unsafe})
+    for safe in (
+        "https://api.example.com/v1",
+        "http://localhost:1234/v1",
+        "http://127.0.0.1:11434/v1",
+        "http://[::1]:8080/v1",
+    ):
+        assert ProviderConfig.model_validate({**base, "baseUrl": safe})
 
 
 def test_the_api_key_never_shows_in_repr_or_errors() -> None:

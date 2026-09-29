@@ -1,6 +1,7 @@
 """Messages between the desktop app and the core, version 1. See docs/protocol.md."""
 
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from pydantic.alias_generators import to_camel
@@ -23,7 +24,20 @@ ErrorCode = Literal[
 
 MessageId = Annotated[str, Field(min_length=1, max_length=64)]
 
-SAFE_BASE_URL_PREFIXES = ("https://", "http://127.0.0.1", "http://localhost")
+# Plain http is fine only when the provider runs on this computer.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def is_safe_base_url(url: str) -> bool:
+    """True for https URLs, and for http URLs whose host is this computer."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return False
+    if not host:
+        return False
+    return parts.scheme == "https" or (parts.scheme == "http" and host in LOCAL_HOSTS)
 
 
 class Message(BaseModel):
@@ -51,7 +65,7 @@ class ProviderConfig(Message):
     def _base_url_matches_kind(self) -> "ProviderConfig":
         if self.kind == "openai-compatible" and not self.base_url:
             raise ValueError("openai-compatible providers need a baseUrl")
-        if self.base_url and not self.base_url.startswith(SAFE_BASE_URL_PREFIXES):
+        if self.base_url and not is_safe_base_url(self.base_url):
             raise ValueError("baseUrl must use https, or http on localhost")
         return self
 
