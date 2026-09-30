@@ -23,6 +23,19 @@ uv run professor-core
 | `PROFESSOR_CORE_PORT` | `8765` | Port on `127.0.0.1`. The core never listens on other interfaces. |
 | `PROFESSOR_CORE_TOKEN` | unset | When set, the desktop app must send the same token in `hello`. |
 | `PROFESSOR_CORE_LOG_LEVEL` | `INFO` | `DEBUG` logs whole conversations, so use it only for debugging. |
+| `PROFESSOR_CORE_MODELS` | `~/.local/share/professor-agent/models` | Where the speech models are kept. |
+
+## Voice
+
+Local speech needs the `voice` extra and, for now, an NVIDIA graphics card:
+
+```bash
+uv sync --extra voice
+```
+
+The first time the desktop turns voice on, the core downloads about 2 GB into the models folder: faster-whisper large-v3-turbo for speech-to-text, and Kokoro for text-to-speech. Each file is pinned to one release and checked against its SHA-256 before it is used. The core loads the models once and shares them between connections.
+
+On Linux, the CUDA libraries come from the `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` wheels, and the core loads them by path before the first use of the GPU, so nothing needs to be on `LD_LIBRARY_PATH`.
 
 ```bash
 curl http://127.0.0.1:8765/health

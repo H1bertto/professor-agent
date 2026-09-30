@@ -19,6 +19,7 @@ from professor_core.protocol import (
     decode_audio,
 )
 from professor_core.session import Session
+from professor_core.speech_models import VoiceEngine
 
 HELLO_TIMEOUT_S = 5.0
 POLICY_VIOLATION = 1008
@@ -35,7 +36,9 @@ def token_matches(expected: str | None, provided: str | None) -> bool:
     return provided is not None and hmac.compare_digest(expected.encode(), provided.encode())
 
 
-async def serve_connection(websocket: WebSocket, *, token: str | None) -> None:
+async def serve_connection(
+    websocket: WebSocket, *, token: str | None, voice: VoiceEngine | None = None
+) -> None:
     if not accepts_origin(websocket.headers):
         await websocket.close(code=POLICY_VIOLATION)
         return
@@ -58,7 +61,7 @@ async def serve_connection(websocket: WebSocket, *, token: str | None) -> None:
             await websocket.send_text(message.to_json())
 
     await send(Ready(core=__version__))
-    session = Session(send)
+    session = Session(send, voice=voice)
     try:
         while True:
             frame = await websocket.receive()

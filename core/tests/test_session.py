@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 from fake_provider import FakeProvider
@@ -10,8 +11,11 @@ from professor_core.protocol import (
     PersonaConfig,
     ProviderConfig,
     UserText,
+    VoiceConfig,
+    VoiceStatus,
 )
 from professor_core.session import Session
+from professor_core.speech_models import SpeechModels, VoiceEngine
 
 pytestmark = pytest.mark.anyio
 
@@ -39,6 +43,35 @@ def configure(fake: FakeProvider) -> Configure:
         kind="openai-compatible", base_url=fake.openai_base_url, model="gpt-fake", api_key="k"
     )
     return Configure(provider=provider, persona=PersonaConfig(name="Professor"), voice=VOICE_OFF)
+
+
+async def test_reports_the_voice_status_while_voice_is_on(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    engine = VoiceEngine(
+        tmp_path,
+        check=lambda: None,
+        downloader=lambda folder, *, progress: None,
+        loader=lambda folder: SpeechModels(whisper="whisper", kokoro="kokoro"),
+    )
+    outbox = Outbox()
+    session = Session(outbox, voice=engine)
+    await session.handle(configure(fake_provider))
+    assert not [m for m in outbox.messages if m.type == "voice.status"]  # type: ignore[attr-defined]
+    pipeline = session._conversation
+
+    voice_on = VoiceConfig(
+        enabled=True, speak_answers=True, spoken_language="auto", english_voice="teacher"
+    )
+    await session.handle(configure(fake_provider).model_copy(update={"voice": voice_on}))
+    await engine.wait()
+    states = [m.state for m in outbox.messages if m.type == "voice.status"]  # type: ignore[attr-defined]
+    assert states[-2:] == ["loading", "ready"]
+    assert session._conversation is pipeline, "voice settings keep the teacher's pipeline"
+
+    await session.handle(configure(fake_provider))
+    assert outbox.messages[-1] == VoiceStatus(state="off")
+    await session.close()
 
 
 async def test_replaces_a_pipeline_that_stopped_by_itself(fake_provider: FakeProvider) -> None:

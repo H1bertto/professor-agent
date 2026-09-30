@@ -32,8 +32,11 @@ from professor_core.protocol import (
     ResponseStart,
     Segment,
     UserText,
+    VoiceConfig,
+    VoiceStatus,
 )
 from professor_core.providers import create_llm_service, describe_provider_error, list_models
+from professor_core.speech_models import VoiceEngine
 
 Send = Callable[[CoreMessage], Awaitable[None]]
 PROVIDER_TEST_TIMEOUT_S = 20.0
@@ -44,12 +47,16 @@ VOICE_UNAVAILABLE_MESSAGE = (
 
 
 class Session:
-    def __init__(self, send: Send) -> None:
+    def __init__(self, send: Send, *, voice: VoiceEngine | None = None) -> None:
         self._send = send
+        self._voice = voice
         self._configuration: Configure | None = None
         self._conversation: Conversation | None = None
         self._parsers: dict[str, MarkupParser] = {}
         self._tasks: set[asyncio.Task[None]] = set()
+        # The desktop starts from "off", so only changes are worth sending.
+        self._reported_voice = VoiceStatus(state="off")
+        self._stop_voice_updates: Callable[[], None] | None = None
 
     async def handle(self, message: ClientMessage) -> None:
         if isinstance(message, Configure):
@@ -68,13 +75,19 @@ class Session:
         """Microphone audio. The core has no speech models yet, so it drops it."""
 
     async def _listen_start(self, message: ListenStart) -> None:
-        # The speech models are not part of the core yet, so no listening can start.
+        # Listening arrives with the speech-to-text step. Until then, no listening can start.
+        status = self._reported_voice
         await self._send(
-            ErrorMessage(id=message.id, code="voice_unavailable", message=VOICE_UNAVAILABLE_MESSAGE)
+            ErrorMessage(
+                id=message.id,
+                code="voice_unavailable",
+                message=status.message or VOICE_UNAVAILABLE_MESSAGE,
+            )
         )
         await self._send(ListenEnd(id=message.id, reason="cancelled"))
 
     async def close(self) -> None:
+        self._stop_following_voice()
         for task in self._tasks:
             task.cancel()
         conversation, self._conversation = self._conversation, None
@@ -82,8 +95,40 @@ class Session:
             await conversation.close()
 
     async def _configure(self, message: Configure) -> None:
-        self._configuration = message
-        await self._restart_conversation()
+        previous, self._configuration = self._configuration, message
+        await self._apply_voice(message.voice)
+        # Voice settings change often and do not affect the teacher, so they keep the pipeline.
+        same_teacher = previous is not None and (previous.provider, previous.persona) == (
+            message.provider,
+            message.persona,
+        )
+        if not same_teacher or self._conversation is None or not self._conversation.alive:
+            await self._restart_conversation()
+
+    async def _apply_voice(self, voice: VoiceConfig) -> None:
+        if not voice.enabled:
+            self._stop_following_voice()
+            await self._report_voice(VoiceStatus(state="off"))
+            return
+        if self._voice is None:
+            await self._report_voice(
+                VoiceStatus(state="unavailable", message="This core has no voice engine.")
+            )
+            return
+        if self._stop_voice_updates is None:
+            self._stop_voice_updates = self._voice.subscribe(self._report_voice)
+        await self._report_voice(self._voice.status)
+        self._voice.start()
+
+    def _stop_following_voice(self) -> None:
+        if self._stop_voice_updates:
+            self._stop_voice_updates()
+            self._stop_voice_updates = None
+
+    async def _report_voice(self, status: VoiceStatus) -> None:
+        if status != self._reported_voice:
+            self._reported_voice = status
+            await self._send(status)
 
     async def _restart_conversation(self) -> None:
         # A new provider or persona needs a new pipeline. The history carries over.
