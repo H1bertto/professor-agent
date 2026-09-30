@@ -4,7 +4,16 @@ import {
   type Emotion,
   type LookTarget
 } from '../../../../shared/avatar'
-import { approach, breathing, clamp, createBlinker, mix, THINKING_GAZE } from '../motion'
+import {
+  approach,
+  breathing,
+  clamp,
+  createBlinker,
+  LISTENING_FOCUS,
+  LISTENING_GAZE,
+  mix,
+  THINKING_GAZE
+} from '../motion'
 import type { AvatarRenderer } from '../types'
 import { parsePngTuberManifest, type PngTuberFrames } from '../../../../shared/pngtuber-manifest'
 
@@ -33,8 +42,9 @@ export class PngTuberAvatar implements AvatarRenderer {
   private hop = 0
   private look: LookTarget = { x: 0, y: 0 }
   private lookGoal: LookTarget = { x: 0, y: 0 }
-  /** How much of the thinking pose shows, from 0 to 1, so changes are smooth. */
+  /** How much of the thinking and listening poses shows, from 0 to 1, so changes are smooth. */
   private thinking = 0
+  private listening = 0
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     // The hit test reads a pixel every frame, which is faster on a CPU-backed canvas.
@@ -68,9 +78,20 @@ export class PngTuberAvatar implements AvatarRenderer {
   frame(deltaSeconds: number): void {
     this.time += deltaSeconds
     this.thinking = approach(this.thinking, this.state === 'thinking' ? 1 : 0, 5, deltaSeconds)
-    // While thinking, the avatar leans toward the side it looks at, away from the cursor.
-    const goalX = mix(clamp(this.lookGoal.x, -1.5, 1.5), THINKING_GAZE.x, this.thinking)
-    const goalY = mix(clamp(this.lookGoal.y, -1.5, 1.5), THINKING_GAZE.y, this.thinking)
+    this.listening = approach(this.listening, this.state === 'listening' ? 1 : 0, 5, deltaSeconds)
+    // While thinking, the avatar leans toward the side it looks at, away from the cursor. While
+    // listening, it faces the student.
+    const focus = this.listening * LISTENING_FOCUS
+    const goalX = mix(
+      mix(clamp(this.lookGoal.x, -1.5, 1.5), THINKING_GAZE.x, this.thinking),
+      LISTENING_GAZE.x,
+      focus
+    )
+    const goalY = mix(
+      mix(clamp(this.lookGoal.y, -1.5, 1.5), THINKING_GAZE.y, this.thinking),
+      LISTENING_GAZE.y,
+      focus
+    )
     this.look = {
       x: approach(this.look.x, goalX, 4, deltaSeconds),
       y: approach(this.look.y, goalY, 4, deltaSeconds)
@@ -95,8 +116,12 @@ export class PngTuberAvatar implements AvatarRenderer {
     // Pivot at the bottom center, so breathing and leaning look anchored to the shoulders.
     context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0)
     context.translate(this.width / 2 + lean * this.width * 0.02, this.height)
-    context.rotate(lean * 0.03 + this.thinking * 0.05 + Math.sin(this.time * 0.6) * 0.01)
-    context.scale(1, 1 + breathing(this.time) * 0.012)
+    context.rotate(
+      lean * 0.03 + this.thinking * 0.05 - this.listening * 0.04 + Math.sin(this.time * 0.6) * 0.01
+    )
+    // Listening, the avatar tilts the other way and comes a little closer.
+    const closer = 1 + this.listening * 0.02
+    context.scale(closer, closer * (1 + breathing(this.time) * 0.012))
     context.translate(0, -this.hop * this.height * 0.04)
     context.drawImage(image, -width / 2, -height, width, height)
   }

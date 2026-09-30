@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { approach, breathing, clamp, createBlinker, mix, talkingMouth } from './motion'
+import {
+  approach,
+  breathing,
+  clamp,
+  createBlinker,
+  mix,
+  mouthFromLevel,
+  talkingMouth
+} from './motion'
 
 describe('mix', () => {
   it('blends between two values and stays within them', () => {
@@ -61,6 +69,16 @@ describe('approach', () => {
     let small = 0
     for (let i = 0; i < 10; i++) small = approach(small, 1, 5, 0.01)
     expect(small).toBeCloseTo(approach(0, 1, 5, 0.1))
+  })
+})
+
+describe('mouthFromLevel', () => {
+  it('keeps the mouth shut for quiet sound and opens it more for louder speech', () => {
+    expect(mouthFromLevel(0)).toBe(0)
+    expect(mouthFromLevel(0.005)).toBe(0)
+    expect(mouthFromLevel(0.05)).toBeGreaterThan(mouthFromLevel(0.02))
+    expect(mouthFromLevel(0.1)).toBeCloseTo(0.72)
+    expect(mouthFromLevel(1)).toBe(1)
   })
 })
 
