@@ -1,5 +1,7 @@
 import asyncio
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fake_provider import FakeProvider
@@ -26,6 +28,23 @@ from professor_core.session import Session
 from professor_core.speech_models import SpeechModels, VoiceEngine
 
 pytestmark = pytest.mark.anyio
+
+OPEN_SESSIONS: list[Session] = []
+
+
+@pytest.fixture(autouse=True)
+async def close_sessions() -> AsyncIterator[None]:
+    """A session left open keeps Pipecat tasks alive, which hangs the test runner."""
+    yield
+    for session in OPEN_SESSIONS:
+        await session.close()
+    OPEN_SESSIONS.clear()
+
+
+def new_session(send: Any, **options: Any) -> Session:
+    session = Session(send, **options)
+    OPEN_SESSIONS.append(session)
+    return session
 
 
 class Outbox:
@@ -67,7 +86,7 @@ async def test_reports_the_voice_status_while_voice_is_on(
         loader=lambda folder: SpeechModels(whisper="whisper", kokoro="kokoro"),
     )
     outbox = Outbox()
-    session = Session(outbox, voice=engine)
+    session = new_session(outbox, voice=engine)
     await session.handle(configure(fake_provider))
     assert not [m for m in outbox.messages if m.type == "voice.status"]  # type: ignore[attr-defined]
     pipeline = session._conversation
@@ -97,7 +116,7 @@ async def listening_session(
     engine = await ready_engine(folder)
     outbox = Outbox()
     detector = ScriptedDetector(speaking=speaking)
-    session = Session(outbox, voice=engine, detector_factory=lambda: detector)
+    session = new_session(outbox, voice=engine, detector_factory=lambda: detector)
     await session.handle(configure(fake).model_copy(update={"voice": VOICE_ON}))
     return session, outbox
 
@@ -114,9 +133,14 @@ async def test_hears_a_spoken_question_and_answers_it(
     assert types(answer)[:3] == ["listen.end", "transcript", "response.start"]
     assert answer[0] == ListenEnd(id="v1", reason="silence")
     assert answer[1] == Transcript(id="v1", text="since vs for?", lang="pt")
-    assert answer[-1] == ResponseEnd(id="v1", reason="complete")
+    assert ResponseEnd(id="v1", reason="complete") in answer
     request = fake_provider.last_request("/v1/chat/completions")
     assert "since vs for?" in str(request.body)
+
+    metrics = (await outbox.until("v1", "turn.metrics"))[-1]
+    assert metrics.listened_ms == round(4 * 0.032 * 1000)  # type: ignore[attr-defined]
+    assert metrics.transcribe_ms is not None  # type: ignore[attr-defined]
+    assert metrics.first_audio_ms is None, "this answer is not spoken"  # type: ignore[attr-defined]
     await session.close()
 
 
@@ -173,7 +197,7 @@ async def test_a_new_question_replaces_the_one_being_heard(
 async def test_listening_needs_voice_on(fake_provider: FakeProvider, tmp_path: Path) -> None:
     engine = await ready_engine(tmp_path)
     outbox = Outbox()
-    session = Session(outbox, voice=engine)
+    session = new_session(outbox, voice=engine)
     await session.handle(configure(fake_provider))
     await session.handle(ListenStart(id="v1"))
 
@@ -193,7 +217,7 @@ async def test_speaks_the_answer_while_the_text_streams(
     async def send_audio(frame: bytes) -> None:
         audio.append(frame)
 
-    session = Session(outbox, send_audio=send_audio, voice=engine)
+    session = new_session(outbox, send_audio=send_audio, voice=engine)
     speaking = VOICE_ON.model_copy(update={"speak_answers": True})
     await session.handle(configure(fake_provider).model_copy(update={"voice": speaking}))
     await session.handle(UserText(id="q1", text="Qual a diferença entre since e for?"))
@@ -201,18 +225,24 @@ async def test_speaks_the_answer_while_the_text_streams(
     sent = await outbox.until("q1", "speech.end")
     kinds = types(sent)
     assert kinds.index("speech.start") > kinds.index("response.start")
-    assert sent[-1] == SpeechEnd(id="q1", reason="complete")
+    assert SpeechEnd(id="q1", reason="complete") in sent
     segments = [m for m in sent if m.type == "speech.segment"]  # type: ignore[attr-defined]
     assert segments and all(s.lang == "pt" for s in segments)  # type: ignore[attr-defined]
     assert audio and all(frame[0] == 0x02 for frame in audio)
     # The fake teacher says <en>since</en>, which the teacher's voice pronounces in English.
     assert any("<en-us:since>" in call["text"] for call in kokoro.calls)
+
+    metrics = (await outbox.until("q1", "turn.metrics"))[-1]
+    assert metrics.type == "turn.metrics"  # type: ignore[attr-defined]
+    assert metrics.listened_ms is None  # type: ignore[attr-defined]
+    assert metrics.first_text_ms is not None and metrics.first_audio_ms is not None  # type: ignore[attr-defined]
+    assert metrics.total_ms >= metrics.first_text_ms  # type: ignore[attr-defined]
     await session.close()
 
 
 async def test_replaces_a_pipeline_that_stopped_by_itself(fake_provider: FakeProvider) -> None:
     outbox = Outbox()
-    session = Session(outbox)
+    session = new_session(outbox)
     await session.handle(configure(fake_provider))
     await session.handle(UserText(id="q1", text="remember me"))
     await outbox.answer("q1")
@@ -228,7 +258,7 @@ async def test_replaces_a_pipeline_that_stopped_by_itself(fake_provider: FakePro
     await session.handle(UserText(id="q2", text="since vs for?"))
     answer = await outbox.answer("q2")
 
-    assert answer[-1].reason == "complete"  # type: ignore[attr-defined]
+    assert ResponseEnd(id="q2", reason="complete") in answer
     assert any(m.type == "response.delta" for m in answer)  # type: ignore[attr-defined]
     assert session._conversation is not stopped
     request = fake_provider.last_request("/v1/chat/completions")

@@ -3,6 +3,7 @@
 import asyncio
 from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from loguru import logger
@@ -38,6 +39,7 @@ from professor_core.protocol import (
     Segment,
     SpokenLanguage,
     Transcript,
+    TurnMetrics,
     UserText,
     VoiceConfig,
     VoiceStatus,
@@ -55,6 +57,41 @@ VOICE_UNAVAILABLE_MESSAGE = (
 NO_SPEECH_MESSAGE = "I did not hear anything. Try again, a little closer to the microphone."
 # English phrases from recent answers, which help Whisper hear them inside Portuguese.
 MAX_ENGLISH_PHRASES = 30
+
+
+@dataclass
+class TurnClock:
+    """When each step of one question and answer happened, in event loop seconds."""
+
+    asked_at: float
+    listened_ms: int | None = None
+    transcribe_ms: int | None = None
+    first_text_at: float | None = None
+
+    def metrics(self, question_id: str, first_audio_at: float | None) -> TurnMetrics:
+        def ms(start: float | None, end: float | None) -> int | None:
+            return None if start is None or end is None else round((end - start) * 1000)
+
+        return TurnMetrics(
+            id=question_id,
+            listened_ms=self.listened_ms,
+            transcribe_ms=self.transcribe_ms,
+            first_text_ms=ms(self.asked_at, self.first_text_at),
+            first_audio_ms=ms(self.first_text_at, first_audio_at),
+            total_ms=ms(self.asked_at, first_audio_at or self.first_text_at),
+        )
+
+
+def describe_turn(metrics: TurnMetrics) -> str:
+    """The step times of a turn for the log, without anything the student said."""
+    steps = [
+        ("listened", metrics.listened_ms),
+        ("transcribed in", metrics.transcribe_ms),
+        ("first words after", metrics.first_text_ms),
+        ("first speech after", metrics.first_audio_ms),
+        ("total", metrics.total_ms),
+    ]
+    return ", ".join(f"{name} {value / 1000:.2f} s" for name, value in steps if value is not None)
 
 
 def silero_detector() -> VoiceDetector:
@@ -78,6 +115,7 @@ class Session:
         self._speakers: dict[str, Speaker] = {}
         # The language each question was asked in, which the answer is spoken in.
         self._question_languages: dict[str, SpokenLanguage] = {}
+        self._clocks: dict[str, TurnClock] = {}
         self._detector_factory = detector_factory
         self._detector: VoiceDetector | None = None
         self._configuration: Configure | None = None
@@ -157,6 +195,7 @@ class Session:
         models = self._voice.models if self._voice else None
         if models is None or self._configuration is None:
             return
+        ended_at = asyncio.get_running_loop().time()
         self._hearing.add(listening.id)
         try:
             heard = await asyncio.to_thread(
@@ -188,6 +227,11 @@ class Session:
             )
             return
         self._last_language = heard.lang
+        self._clocks[listening.id] = TurnClock(
+            asked_at=ended_at,
+            listened_ms=round(listening.seconds * 1000),
+            transcribe_ms=round((asyncio.get_running_loop().time() - ended_at) * 1000),
+        )
         await self._send(Transcript(id=listening.id, text=heard.text, lang=heard.lang))
         await self._ask(UserText(id=listening.id, text=heard.text), language=heard.lang)
 
@@ -266,12 +310,14 @@ class Session:
 
     async def _ask(self, message: UserText, *, language: SpokenLanguage | None = None) -> None:
         self._question_languages[message.id] = language or self._typed_language(message.text)
+        self._clocks.setdefault(message.id, TurnClock(asked_at=asyncio.get_running_loop().time()))
         if self._conversation is not None and not self._conversation.alive:
             # A pipeline that stopped by itself would swallow every question from now on.
             logger.warning("The conversation pipeline had stopped. Starting a new one.")
             await self._restart_conversation()
         if self._conversation is None:
             self._question_languages.pop(message.id, None)
+            self._clocks.pop(message.id, None)
             await self._send(ResponseStart(id=message.id))
             await self._send(
                 ErrorMessage(
@@ -302,6 +348,9 @@ class Session:
             await self._start(event.id)
         elif isinstance(event, ResponseText):
             await self._start(event.id)
+            clock = self._clocks.get(event.id)
+            if clock and clock.first_text_at is None and event.text.strip():
+                clock.first_text_at = asyncio.get_running_loop().time()
             await self._send_markup(event.id, self._parsers[event.id].feed(event.text))
         elif isinstance(event, ResponseFinished):
             await self._end(event.id, event.reason)
@@ -350,12 +399,24 @@ class Session:
         await self._send_markup(response_id, self._parsers.pop(response_id).finish())
         self._remember_english(self._answer_pieces.pop(response_id, []))
         await self._send(ResponseEnd(id=response_id, reason=reason))
-        if speaker := self._speakers.pop(response_id, None):
+        clock = self._clocks.pop(response_id, None)
+        speaker = self._speakers.pop(response_id, None)
+        if speaker and reason != "complete":
+            speaker.stop("cancelled" if reason == "cancelled" else "error")
+        elif speaker:
             # Speech can run behind the text, so it ends on its own after the last sentence.
-            if reason == "complete":
-                speaker.finish()
-            else:
-                speaker.stop("cancelled" if reason == "cancelled" else "error")
+            speaker.finish()
+        if clock and reason == "complete":
+            self._in_background(self._report_turn(response_id, clock, speaker))
+
+    async def _report_turn(
+        self, question_id: str, clock: TurnClock, speaker: Speaker | None
+    ) -> None:
+        if speaker:
+            await speaker.done()
+        metrics = clock.metrics(question_id, speaker.first_audio_at if speaker else None)
+        logger.info(f"Turn {question_id[:8]}: {describe_turn(metrics)}")
+        await self._send(metrics)
 
     def _remember_english(self, pieces: list[TextPiece]) -> None:
         """Keeps the English phrases of an answer. Spans can arrive split across pieces."""
