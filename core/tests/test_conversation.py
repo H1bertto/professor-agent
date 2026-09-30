@@ -4,8 +4,16 @@ from collections.abc import AsyncIterator
 import anthropic
 import openai
 import pytest
-from fake_provider import BAD_KEY, MODEL_MAX_TOKENS, REPLY, SLOW_MODEL, FakeProvider
+from fake_provider import (
+    BAD_KEY,
+    HANG_QUESTION,
+    MODEL_MAX_TOKENS,
+    REPLY,
+    SLOW_MODEL,
+    FakeProvider,
+)
 
+from professor_core import providers
 from professor_core.conversation import (
     Conversation,
     ConversationEvent,
@@ -203,6 +211,46 @@ async def test_carries_history_into_a_new_conversation(talk, fake_provider: Fake
     assert request.body is not None
     contents = [message.get("content") for message in request.body["messages"]]
     assert "remember me" in contents
+
+
+async def test_a_silent_provider_fails_with_a_timeout(talk, fake_provider: FakeProvider) -> None:
+    conversation, recorder = await talk(openai_provider(fake_provider), first_text_timeout_s=0.5)
+    await conversation.ask("q1", HANG_QUESTION)
+
+    result = await recorder.wait_until_done("q1", timeout=5)
+    assert isinstance(result, ResponseFailed)
+    assert isinstance(result.error, TimeoutError)
+    assert recorder.text("q1") == ""
+
+
+async def test_answers_again_after_a_timeout(talk, fake_provider: FakeProvider) -> None:
+    conversation, recorder = await talk(openai_provider(fake_provider), first_text_timeout_s=0.5)
+    await conversation.ask("q1", HANG_QUESTION)
+    await recorder.wait_until_done("q1", timeout=5)
+    await conversation.ask("q2", "since vs for?")
+
+    assert await recorder.wait_until_done("q2", timeout=10) == ResponseFinished("q2", "complete")
+    assert recorder.text("q2") == REPLY
+
+
+async def test_only_gemini_gets_a_reasoning_effort(
+    talk, fake_provider: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation, recorder = await talk(openai_provider(fake_provider))
+    await conversation.ask("q1", "hi")
+    await recorder.wait_until_done("q1")
+    request = fake_provider.last_request("/v1/chat/completions")
+    assert request.body is not None
+    assert "reasoning_effort" not in request.body
+
+    # Pretend the fake is Gemini.
+    monkeypatch.setattr(providers, "GEMINI_HOST", "127.0.0.1")
+    conversation, recorder = await talk(openai_provider(fake_provider))
+    await conversation.ask("q2", "hi")
+    await recorder.wait_until_done("q2")
+    request = fake_provider.last_request("/v1/chat/completions")
+    assert request.body is not None
+    assert request.body["reasoning_effort"] == "low"
 
 
 async def test_closing_cancels_the_running_answer(talk, fake_provider: FakeProvider) -> None:

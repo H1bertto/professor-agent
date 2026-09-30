@@ -131,6 +131,29 @@ describe('Tutor', () => {
     expect(answers).toEqual([])
   })
 
+  it('gives up when the core never answers', () => {
+    tutor.ask('hi')
+    const id = askedId()
+    vi.advanceTimersByTime(89_000)
+    expect(answers.at(-1)?.status).toBe('waiting')
+
+    vi.advanceTimersByTime(1_000)
+    expect(core.sent.at(-1)).toEqual({ type: 'response.cancel', id })
+    expect(answers.at(-1)).toMatchObject({ status: 'error' })
+    expect(answers.at(-1)?.error).toContain('did not answer')
+    expect(poses.at(-1)).toEqual({ state: 'idle', talking: false })
+  })
+
+  it('does not give up on an answer that is streaming', () => {
+    tutor.ask('hi')
+    const id = askedId()
+    core.emit({ type: 'response.delta', id, segments: [{ text: 'Oi', lang: null }] })
+    vi.advanceTimersByTime(120_000)
+
+    expect(answers.at(-1)?.status).toBe('streaming')
+    expect(core.sent.filter((message) => message.type === 'response.cancel')).toEqual([])
+  })
+
   it('keeps a copy of the last answer for the bubble', () => {
     expect(tutor.current).toBeNull()
     tutor.ask('hi')

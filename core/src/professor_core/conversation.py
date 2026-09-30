@@ -31,7 +31,11 @@ from pipecat.services.llm_service import LLMService
 from pipecat.workers.runner import WorkerRunner
 
 HISTORY_LIMIT = 20
-START_TIMEOUT_S = 20.0
+# Pipecat marks an answer as started before the provider replies, so the limit that matters is
+# the time to the first words. Past it, the answer stops and the student sees an error.
+FIRST_TEXT_TIMEOUT_S = 45.0
+# After stopping a silent answer, how long to wait for the pipeline to confirm it ended.
+STOP_GRACE_S = 2.0
 # The next question waits until the previous answer is saved in the history, at most this long.
 SAVE_TIMEOUT_S = 1.0
 # Errors travel up the pipeline while the end of an answer travels down, so an empty answer
@@ -74,6 +78,7 @@ class _Response:
     ended: bool = False
     produced_text: bool = False
     cancel_requested: bool = False
+    timed_out: bool = False
     error: BaseException | None = None
 
 
@@ -85,9 +90,11 @@ class Conversation:
         *,
         history: list[Any] | None = None,
         history_limit: int = HISTORY_LIMIT,
+        first_text_timeout_s: float = FIRST_TEXT_TIMEOUT_S,
     ) -> None:
         self._on_event = on_event
         self._history_limit = history_limit
+        self._first_text_timeout_s = first_text_timeout_s
         self._context = LLMContext(list(history or []))
         aggregators = LLMContextAggregatorPair(self._context)
         assistant = aggregators.assistant()
@@ -152,7 +159,7 @@ class Conversation:
             return
         self._active = response
         self._trim_history()
-        self._after(START_TIMEOUT_S, lambda: self._start_timed_out(response))
+        self._after(self._first_text_timeout_s, lambda: self._first_text_timed_out(response))
         message = {"role": "user", "content": response.question}
         await self._worker.queue_frames([LLMMessagesAppendFrame([message], run_llm=True)])
 
@@ -186,7 +193,12 @@ class Conversation:
 
     async def _on_text(self, text: str) -> None:
         response = self._active
-        if response and response.started and not response.cancel_requested:
+        if (
+            response
+            and response.started
+            and not response.cancel_requested
+            and not response.timed_out
+        ):
             response.produced_text = True
             await self._emit(ResponseText(response.id, text))
 
@@ -209,6 +221,9 @@ class Conversation:
         if response is None:
             logger.warning(f"Provider error with no active answer: {type(error).__name__}")
             return
+        if response.timed_out:
+            # The timeout already explains this answer. Stopping it can raise errors of its own.
+            return
         response.error = error
         if response.ended and not response.cancel_requested:
             await self._finish(response, ResponseFailed(response.id, error))
@@ -219,10 +234,21 @@ class Conversation:
         else:
             await self._finish(response, ResponseFinished(response.id, "complete"))
 
-    async def _start_timed_out(self, response: _Response) -> None:
+    async def _first_text_timed_out(self, response: _Response) -> None:
+        if self._active is not response or response.produced_text or response.ended:
+            return
+        response.error = TimeoutError("The provider did not start answering in time.")
         if not response.started:
-            error = TimeoutError("The provider did not start answering.")
-            await self._finish(response, ResponseFailed(response.id, error))
+            await self._finish(response, ResponseFailed(response.id, response.error))
+            return
+        # Stop the request. The end of the answer then reports the timeout, and if that end
+        # never comes, the answer fails anyway after a short grace.
+        response.timed_out = True
+        await self._worker.queue_frames([InterruptionFrame()])
+        self._after(
+            STOP_GRACE_S,
+            lambda: self._finish(response, ResponseFailed(response.id, response.error)),
+        )
 
     async def _finish(self, response: _Response, event: ConversationEvent) -> None:
         if self._active is not response:

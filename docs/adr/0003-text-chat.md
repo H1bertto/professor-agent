@@ -18,11 +18,12 @@ Phase 2 makes the avatar answer questions. The student types a question, the tea
 
 ADR 0001 picked Pipecat for the voice pipeline. We tried it for text first, with a decision gate: if Pipecat got in the way of plain text, we would call the provider SDKs directly and bring Pipecat in with voice. It stayed. A pipeline of the user aggregator, the LLM service, and the assistant aggregator (`LLMContextAggregatorPair`) streams the answer, keeps the history, and handles interruption with `InterruptionFrame`, which is exactly what voice needs next.
 
-Three problems came up and are handled in [`conversation.py`](../../core/src/professor_core/conversation.py) and [`providers.py`](../../core/src/professor_core/providers.py):
+Four problems came up and are handled in [`conversation.py`](../../core/src/professor_core/conversation.py) and [`providers.py`](../../core/src/professor_core/providers.py):
 
 - A new question could reach the history before the previous answer was saved. The next question now waits for `on_assistant_turn_stopped`, for at most one second.
 - The Anthropic and OpenAI services left their HTTP clients open. Small subclasses close them in `cleanup`.
 - Only one answer runs at a time. A new question cancels the running one.
+- A silent provider left the bubble on "Thinking..." for minutes. Pipecat marks an answer as started before the provider replies, and its OpenAI client waits up to ten minutes. Requests now time out after 30 seconds without data, and an answer with no words after 45 seconds stops with an error. The desktop also gives up after 90 seconds, in case the core itself stops responding.
 
 The core keeps the last 20 messages in memory. A new provider or persona rebuilds the pipeline and keeps the history. Nothing is saved to disk yet: lessons and memory are phase 5.
 
@@ -54,6 +55,8 @@ For Anthropic, the default model is `claude-opus-5`, and the student can pick a 
 - `effort: "low"` on models that support it, because a spoken tutor needs fast first words more than deep reasoning;
 - `max_tokens` from the model's own limit, capped at 64,000. Answers stream, so a generous cap costs nothing;
 - server-side refusal fallbacks (`fallbacks: "default"` with the `server-side-fallback-2026-07-01` beta) on `claude-opus-5` and `claude-fable-5-1`. When the model declines a request, the API can finish the answer on another Claude model instead of leaving the student without one.
+
+Other OpenAI-compatible providers get only the standard fields, because some reject fields they do not know. The exception is Gemini, whose version 3 models always think: it gets `reasoning_effort: "low"`, for the same fast first words.
 
 ### 5. Emotion tags and language spans
 

@@ -35,6 +35,7 @@ from professor_core.providers import create_llm_service, describe_provider_error
 
 Send = Callable[[CoreMessage], Awaitable[None]]
 PROVIDER_TEST_TIMEOUT_S = 20.0
+MAX_LOGGED_ERROR_LENGTH = 300
 
 
 class Session:
@@ -111,7 +112,11 @@ class Session:
             await self._end(event.id, event.reason)
         elif isinstance(event, ResponseFailed):
             code, text = describe_provider_error(event.error)
-            logger.warning(f"Answer {event.id} failed: {type(event.error).__name__} ({code})")
+            # The provider's own message explains most failures. It never holds the API key.
+            detail = str(event.error)[:MAX_LOGGED_ERROR_LENGTH]
+            logger.warning(
+                f"Answer {event.id} failed: {type(event.error).__name__} ({code}): {detail}"
+            )
             await self._start(event.id)
             await self._send(ErrorMessage(id=event.id, code=code, message=text))
             await self._end(event.id, "error")

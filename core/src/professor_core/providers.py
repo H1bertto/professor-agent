@@ -1,8 +1,9 @@
 """Creates LLM services and lists models for the AI providers a student can connect."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
 import anthropic
 import openai
@@ -14,6 +15,9 @@ from professor_core.protocol import ErrorCode, ProviderConfig
 
 REQUEST_TIMEOUT_S = 30.0
 LIST_MODELS_TIMEOUT_S = 15.0
+# One quick retry covers a dropped connection. More would keep the student waiting.
+CHAT_MAX_RETRIES = 1
+GEMINI_HOST = "generativelanguage.googleapis.com"
 
 # Answers stream, so a generous output cap costs nothing and never cuts an answer short.
 # Each model reports its own limit, which wins when it is lower.
@@ -49,7 +53,27 @@ class TutorAnthropicLLMService(AnthropicLLMService):
 
 
 class TutorOpenAILLMService(OpenAILLMService):
-    """Pipecat's OpenAI service, closing its HTTP client when the conversation ends."""
+    """Pipecat's OpenAI service, with request timeouts and an HTTP client that gets closed."""
+
+    def create_client(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        organization: str | None = None,
+        project: str | None = None,
+        default_headers: Mapping[str, str] | None = None,
+        **kwargs: Any,
+    ) -> openai.AsyncOpenAI:
+        # Pipecat's client would wait up to ten minutes, twice, for a silent provider.
+        return openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            organization=organization,
+            project=project,
+            default_headers=default_headers,
+            timeout=REQUEST_TIMEOUT_S,
+            max_retries=CHAT_MAX_RETRIES,
+        )
 
     async def cleanup(self) -> None:
         await super().cleanup()
@@ -62,8 +86,20 @@ async def create_llm_service(provider: ProviderConfig, system_prompt: str) -> LL
     return TutorOpenAILLMService(
         api_key=provider.api_key,
         base_url=provider.base_url,
-        settings=OpenAILLMService.Settings(model=provider.model, system_instruction=system_prompt),
+        settings=OpenAILLMService.Settings(
+            model=provider.model,
+            system_instruction=system_prompt,
+            extra=openai_compatible_extra(provider.base_url),
+        ),
     )
+
+
+def openai_compatible_extra(base_url: str | None) -> dict[str, Any]:
+    """Provider-specific request fields. Other providers may reject them, so only these get them."""
+    if base_url and urlsplit(base_url).hostname == GEMINI_HOST:
+        # Gemini 3 models always think. The lowest level gives the fastest first words.
+        return {"reasoning_effort": TUTOR_EFFORT}
+    return {}
 
 
 async def _anthropic_service(provider: ProviderConfig, system_prompt: str) -> LLMService:
@@ -145,6 +181,12 @@ def describe_provider_error(error: BaseException) -> tuple[ErrorCode, str]:
         if error.status_code >= 500:
             return "provider_unavailable", "The provider is unavailable right now. Try again soon."
         return "bad_request", "The provider rejected the request."
-    if isinstance(error, anthropic.APIConnectionError | openai.APIConnectionError | TimeoutError):
+    # Timeouts first: the SDK timeout errors are also connection errors.
+    if isinstance(error, anthropic.APITimeoutError | openai.APITimeoutError | TimeoutError):
+        return (
+            "provider_unavailable",
+            "The provider took too long to answer. Try again, or pick a faster model.",
+        )
+    if isinstance(error, anthropic.APIConnectionError | openai.APIConnectionError):
         return "provider_unavailable", "Could not reach the provider. Check the connection."
     return "internal", "Something went wrong while talking to the provider."

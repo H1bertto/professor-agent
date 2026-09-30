@@ -10,7 +10,13 @@ from fake_provider import (
 )
 
 from professor_core.protocol import ProviderConfig
-from professor_core.providers import describe_provider_error, list_models
+from professor_core.providers import (
+    CHAT_MAX_RETRIES,
+    REQUEST_TIMEOUT_S,
+    create_llm_service,
+    describe_provider_error,
+    list_models,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -60,6 +66,20 @@ async def test_an_unreachable_provider_is_unavailable() -> None:
     with pytest.raises(Exception) as caught:
         await list_models(provider, max_retries=0)
     assert describe_provider_error(caught.value)[0] == "provider_unavailable"
+
+
+async def test_openai_compatible_answers_do_not_wait_forever(fake_provider: FakeProvider) -> None:
+    llm = await create_llm_service(openai_provider(fake_provider), "You are a test teacher.")
+    client = llm._client  # type: ignore[attr-defined]
+    assert client.timeout == REQUEST_TIMEOUT_S
+    assert client.max_retries == CHAT_MAX_RETRIES
+    await client.close()
+
+
+def test_timeouts_say_the_provider_was_too_slow() -> None:
+    code, message = describe_provider_error(TimeoutError("no words"))
+    assert code == "provider_unavailable"
+    assert "too long" in message
 
 
 def test_other_errors_are_internal_and_never_echo_details() -> None:

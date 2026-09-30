@@ -20,6 +20,10 @@ MODEL_MAX_TOKENS = 32_000
 
 # Models and keys that make the fake provider behave in special ways.
 SLOW_MODEL = "slow-model"
+# When the last question is this, the fake accepts the request and then stays silent, like a
+# provider that never starts answering.
+HANG_QUESTION = "please hang"
+HANG_S = 30.0
 MISSING_MODEL = "missing-model"
 BAD_KEY = "bad-key"
 NO_CREDIT_KEY = "no-credit"
@@ -137,8 +141,10 @@ class FakeProvider:
                     status_code=404,
                 )
 
+            hang = _last_question(body) == HANG_QUESTION
+
             async def stream() -> AsyncIterator[str]:
-                async for word in _words(body["model"]):
+                async for word in _words(body["model"], hang=hang):
                     chunk = {
                         "id": "fake",
                         "object": "chat.completion.chunk",
@@ -221,7 +227,9 @@ class FakeProvider:
         self.requests.append(RecordedRequest(request.url.path, headers, body))
 
 
-async def _words(model: str) -> AsyncIterator[str]:
+async def _words(model: str, *, hang: bool = False) -> AsyncIterator[str]:
+    if hang:
+        await asyncio.sleep(HANG_S)
     slow = model == SLOW_MODEL
     text = " ".join([REPLY] * (4 if slow else 1))
     words = text.split(" ")
@@ -261,6 +269,14 @@ def _openai_error(key: str | None) -> Response | None:
     return JSONResponse(
         {"error": {"message": message, "type": kind, "code": code}}, status_code=status
     )
+
+
+def _last_question(body: dict[str, Any]) -> str | None:
+    questions = [m for m in body.get("messages", []) if m.get("role") == "user"]
+    content = questions[-1].get("content") if questions else None
+    if isinstance(content, list):
+        content = " ".join(part.get("text", "") for part in content)
+    return content
 
 
 def _bearer(request: Request) -> str | None:

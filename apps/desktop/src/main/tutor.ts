@@ -24,6 +24,11 @@ export interface TutorEvents {
 export const MAX_QUESTION_LENGTH = 8000
 /** The avatar keeps the emotion of the answer for a while, then relaxes. */
 const RELAX_AFTER_MS = 8000
+/**
+ * The core stops a provider that stays silent for 45 seconds. This longer limit only matters if
+ * the core itself stops responding, so the bubble never waits forever.
+ */
+const WAIT_LIMIT_MS = 90_000
 const GENERIC_ERROR = 'Something went wrong. Try again.'
 
 /**
@@ -33,12 +38,14 @@ const GENERIC_ERROR = 'Something went wrong. Try again.'
 export class Tutor {
   private answer: Answer | null = null
   private relaxTimer: ReturnType<typeof setTimeout> | undefined
+  private waitTimer: ReturnType<typeof setTimeout> | undefined
   private readonly stopListening: (() => void)[]
 
   constructor(
     private readonly core: TutorCore,
     private readonly events: TutorEvents,
-    private readonly relaxAfterMs = RELAX_AFTER_MS
+    private readonly relaxAfterMs = RELAX_AFTER_MS,
+    private readonly waitLimitMs = WAIT_LIMIT_MS
   ) {
     this.stopListening = [
       core.onMessage((message) => this.receive(message)),
@@ -67,6 +74,8 @@ export class Tutor {
     this.answer = { id, question: text, segments: [], status: 'waiting', error: null }
     this.publish()
     this.events.pose({ state: 'thinking', emotion: 'neutral', talking: false })
+    clearTimeout(this.waitTimer)
+    this.waitTimer = setTimeout(() => this.giveUpWaiting(id), this.waitLimitMs)
     return { ok: true }
   }
 
@@ -79,7 +88,17 @@ export class Tutor {
 
   dispose(): void {
     clearTimeout(this.relaxTimer)
+    clearTimeout(this.waitTimer)
     for (const stop of this.stopListening) stop()
+  }
+
+  private giveUpWaiting(id: string): void {
+    if (this.answer?.id !== id || this.answer.status !== 'waiting') return
+    this.core.send({ type: 'response.cancel', id })
+    this.finish(
+      'error',
+      'The teacher did not answer. Check that the core is running and try again.'
+    )
   }
 
   private receive(message: CoreMessage): void {
@@ -93,6 +112,7 @@ export class Tutor {
         answer.segments = appendSegments(answer.segments, message.segments)
         if (answer.status === 'waiting') {
           answer.status = 'streaming'
+          clearTimeout(this.waitTimer)
           this.events.pose({ state: 'speaking', talking: true })
         }
         this.publish()
@@ -112,6 +132,7 @@ export class Tutor {
   private finish(status: 'complete' | 'cancelled' | 'error', error?: string): void {
     const answer = this.answer
     if (!answer || !isRunning(answer.status)) return
+    clearTimeout(this.waitTimer)
     answer.status = status
     if (status === 'error') answer.error ??= error ?? GENERIC_ERROR
     this.publish()
