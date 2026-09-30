@@ -73,6 +73,9 @@ class TutorOpenAILLMService(OpenAILLMService):
             default_headers=default_headers,
             timeout=REQUEST_TIMEOUT_S,
             max_retries=CHAT_MAX_RETRIES,
+            # A plain HTTP client, as Pipecat passes. The SDK's own closes itself from a
+            # finalizer on whatever event loop is running then, which fails in tests.
+            http_client=openai.DefaultAsyncHttpxClient(),
         )
 
     async def cleanup(self) -> None:
