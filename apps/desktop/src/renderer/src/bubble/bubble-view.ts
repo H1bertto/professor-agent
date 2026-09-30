@@ -2,10 +2,13 @@
 
 import type { Answer } from '../../../shared/api'
 
-const MIN_VISIBLE_MS = 8_000
-const MAX_VISIBLE_MS = 30_000
-/** Roughly the time to read one character, for a student reading in a second language. */
-const MS_PER_CHARACTER = 50
+const MIN_VISIBLE_MS = 12_000
+const MAX_VISIBLE_MS = 60_000
+/**
+ * Roughly the time to read one character in a second language, about 11 characters a second.
+ * Pin keeps the bubble, and the mouse over it pauses the countdown.
+ */
+const MS_PER_CHARACTER = 90
 
 export function isFinished(answer: Answer): boolean {
   return answer.status !== 'waiting' && answer.status !== 'streaming'

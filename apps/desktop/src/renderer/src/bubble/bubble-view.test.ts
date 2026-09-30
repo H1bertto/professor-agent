@@ -17,9 +17,9 @@ describe('bubble view', () => {
   it('keeps longer answers on screen longer, within limits', () => {
     const text = (length: number): Answer =>
       answer({ segments: [{ text: 'x'.repeat(length), lang: null }] })
-    expect(hideDelayMs(text(10))).toBe(8_000)
-    expect(hideDelayMs(text(300))).toBe(15_000)
-    expect(hideDelayMs(text(5_000))).toBe(30_000)
+    expect(hideDelayMs(text(10))).toBe(12_000)
+    expect(hideDelayMs(text(300))).toBe(27_000)
+    expect(hideDelayMs(text(5_000))).toBe(60_000)
   })
 
   it('explains waiting, stopping, and errors', () => {
