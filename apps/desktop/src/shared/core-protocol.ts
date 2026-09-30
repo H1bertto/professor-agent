@@ -1,8 +1,8 @@
-// Messages between the desktop app and the core, version 1. See docs/protocol.md.
+// Messages between the desktop app and the core, version 2. See docs/protocol.md.
 
 import { isEmotion, type Emotion } from './avatar'
 
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 export type ProviderKind = 'anthropic' | 'openai-compatible'
 
@@ -19,11 +19,38 @@ export interface PersonaConfig {
   instructions: string
 }
 
+export type SpokenLanguage = 'pt' | 'en'
+
+export interface VoiceConfig {
+  /** Loads the speech models and allows spoken questions. */
+  enabled: boolean
+  /** Also speaks the answers, including answers to typed questions. */
+  speakAnswers: boolean
+  /** `auto` detects the language, choosing only between Portuguese and English. */
+  spokenLanguage: 'auto' | SpokenLanguage
+  /** Who says English words: the teacher's own voice, or a native English voice. */
+  englishVoice: 'teacher' | 'native'
+}
+
+export const VOICE_OFF: VoiceConfig = {
+  enabled: false,
+  speakAnswers: false,
+  spokenLanguage: 'auto',
+  englishVoice: 'teacher'
+}
+
 export type ClientMessage =
   | { type: 'hello'; protocol: number; client: string; token: string | null }
-  | { type: 'configure'; provider: ProviderConfig | null; persona: PersonaConfig }
+  | {
+      type: 'configure'
+      provider: ProviderConfig | null
+      persona: PersonaConfig
+      voice: VoiceConfig
+    }
   | { type: 'provider.test'; requestId: string; provider: ProviderConfig }
   | { type: 'user.text'; id: string; text: string }
+  | { type: 'listen.start'; id: string }
+  | { type: 'listen.stop'; id: string }
   | { type: 'response.cancel'; id: string }
 
 export const CORE_ERROR_CODES = [
@@ -33,6 +60,8 @@ export const CORE_ERROR_CODES = [
   'model_not_found',
   'provider_unavailable',
   'not_configured',
+  'no_speech',
+  'voice_unavailable',
   'bad_request',
   'internal'
 ] as const
@@ -46,12 +75,42 @@ export interface Segment {
 
 export type ResponseEndReason = 'complete' | 'cancelled' | 'error'
 
+export const VOICE_STATES = [
+  'off',
+  'downloading',
+  'loading',
+  'ready',
+  'unavailable',
+  'error'
+] as const
+export type VoiceState = (typeof VOICE_STATES)[number]
+
+export const LISTEN_END_REASONS = ['silence', 'stopped', 'too_long', 'cancelled'] as const
+export type ListenEndReason = (typeof LISTEN_END_REASONS)[number]
+
+export interface TurnMetrics {
+  type: 'turn.metrics'
+  id: string
+  listenedMs: number | null
+  transcribeMs: number | null
+  firstTextMs: number | null
+  firstAudioMs: number | null
+  totalMs: number | null
+}
+
 export type CoreMessage =
   | { type: 'ready'; protocol: number; core: string }
+  | { type: 'voice.status'; state: VoiceState; progress: number | null; message: string | null }
+  | { type: 'listen.end'; id: string; reason: ListenEndReason }
+  | { type: 'transcript'; id: string; text: string; lang: SpokenLanguage }
   | { type: 'response.start'; id: string }
   | { type: 'response.delta'; id: string; segments: Segment[] }
   | { type: 'response.emotion'; id: string; emotion: Emotion }
   | { type: 'response.end'; id: string; reason: ResponseEndReason }
+  | { type: 'speech.start'; id: string; sampleRate: number }
+  | { type: 'speech.segment'; id: string; index: number; text: string; lang: SpokenLanguage }
+  | { type: 'speech.end'; id: string; reason: ResponseEndReason }
+  | TurnMetrics
   | {
       type: 'provider.test.result'
       requestId: string
@@ -105,9 +164,80 @@ export function parseCoreMessage(raw: unknown): CoreMessage | null {
       return (raw.id === null || isString(raw.id)) && isErrorCode(raw.code) && isString(raw.message)
         ? { type: 'error', id: raw.id, code: raw.code, message: raw.message }
         : null
+    case 'voice.status': {
+      const progress = raw.progress
+      const validProgress =
+        progress === null || (typeof progress === 'number' && progress >= 0 && progress <= 1)
+      if (!isOneOf(VOICE_STATES, raw.state) || !validProgress) return null
+      if (!(raw.message === null || isString(raw.message))) return null
+      return { type: 'voice.status', state: raw.state, progress, message: raw.message }
+    }
+    case 'listen.end':
+      return isString(raw.id) && isOneOf(LISTEN_END_REASONS, raw.reason)
+        ? { type: 'listen.end', id: raw.id, reason: raw.reason }
+        : null
+    case 'transcript':
+      return isString(raw.id) && isString(raw.text) && isSpokenLanguage(raw.lang)
+        ? { type: 'transcript', id: raw.id, text: raw.text, lang: raw.lang }
+        : null
+    case 'speech.start':
+      return isString(raw.id) && isCount(raw.sampleRate) && raw.sampleRate > 0
+        ? { type: 'speech.start', id: raw.id, sampleRate: raw.sampleRate }
+        : null
+    case 'speech.segment':
+      return isString(raw.id) &&
+        isCount(raw.index) &&
+        isString(raw.text) &&
+        isSpokenLanguage(raw.lang)
+        ? { type: 'speech.segment', id: raw.id, index: raw.index, text: raw.text, lang: raw.lang }
+        : null
+    case 'speech.end':
+      return isString(raw.id) && isEndReason(raw.reason)
+        ? { type: 'speech.end', id: raw.id, reason: raw.reason }
+        : null
+    case 'turn.metrics': {
+      const fields = ['listenedMs', 'transcribeMs', 'firstTextMs', 'firstAudioMs', 'totalMs']
+      if (!isString(raw.id) || !fields.every((f) => raw[f] === null || isCount(raw[f]))) {
+        return null
+      }
+      return {
+        type: 'turn.metrics',
+        id: raw.id,
+        listenedMs: raw.listenedMs as number | null,
+        transcribeMs: raw.transcribeMs as number | null,
+        firstTextMs: raw.firstTextMs as number | null,
+        firstAudioMs: raw.firstAudioMs as number | null,
+        totalMs: raw.totalMs as number | null
+      }
+    }
     default:
       return null
   }
+}
+
+/** The first byte of a binary frame. */
+export const AudioKind = { microphone: 0x01, speech: 0x02 } as const
+export type AudioKind = (typeof AudioKind)[keyof typeof AudioKind]
+
+export const MICROPHONE_SAMPLE_RATE = 16_000
+/** About two seconds of microphone audio. Real frames are much smaller. */
+export const MAX_AUDIO_FRAME_BYTES = 64 * 1024
+
+/** A binary frame: the kind byte, then 16-bit little-endian mono PCM. */
+export function encodeAudioFrame(kind: AudioKind, pcm: Uint8Array): Uint8Array {
+  const frame = new Uint8Array(pcm.byteLength + 1)
+  frame[0] = kind
+  frame.set(pcm, 1)
+  return frame
+}
+
+/** Splits a binary frame, or gives `null` for an unknown kind or broken samples. */
+export function decodeAudioFrame(frame: Uint8Array): { kind: AudioKind; pcm: Uint8Array } | null {
+  if (frame.byteLength === 0 || frame.byteLength > MAX_AUDIO_FRAME_BYTES) return null
+  const kind = frame[0]
+  if (kind !== AudioKind.microphone && kind !== AudioKind.speech) return null
+  const pcm = frame.subarray(1)
+  return pcm.byteLength % 2 === 0 ? { kind, pcm } : null
 }
 
 function parseSegment(value: unknown): Segment | null {
@@ -121,7 +251,20 @@ function isEndReason(value: unknown): value is ResponseEndReason {
 }
 
 function isErrorCode(value: unknown): value is CoreErrorCode {
-  return typeof value === 'string' && (CORE_ERROR_CODES as readonly string[]).includes(value)
+  return isOneOf(CORE_ERROR_CODES, value)
+}
+
+function isOneOf<T extends string>(options: readonly T[], value: unknown): value is T {
+  return typeof value === 'string' && (options as readonly string[]).includes(value)
+}
+
+function isSpokenLanguage(value: unknown): value is SpokenLanguage {
+  return value === 'pt' || value === 'en'
+}
+
+/** A whole number from zero up, such as a sample rate or a duration in milliseconds. */
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
 function isString(value: unknown): value is string {

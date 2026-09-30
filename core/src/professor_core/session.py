@@ -21,6 +21,8 @@ from professor_core.protocol import (
     Configure,
     CoreMessage,
     ErrorMessage,
+    ListenEnd,
+    ListenStart,
     ProviderTest,
     ProviderTestResult,
     ResponseCancel,
@@ -36,6 +38,9 @@ from professor_core.providers import create_llm_service, describe_provider_error
 Send = Callable[[CoreMessage], Awaitable[None]]
 PROVIDER_TEST_TIMEOUT_S = 20.0
 MAX_LOGGED_ERROR_LENGTH = 300
+VOICE_UNAVAILABLE_MESSAGE = (
+    "Voice is not ready. Turn it on in the settings and wait for the speech models."
+)
 
 
 class Session:
@@ -53,8 +58,21 @@ class Session:
             self._in_background(self._test_provider(message))
         elif isinstance(message, UserText):
             await self._ask(message)
+        elif isinstance(message, ListenStart):
+            await self._listen_start(message)
         elif isinstance(message, ResponseCancel) and self._conversation:
             await self._conversation.cancel(message.id)
+        # listen.stop needs a listening to stop, and the core cannot listen yet.
+
+    async def handle_audio(self, pcm: bytes) -> None:
+        """Microphone audio. The core has no speech models yet, so it drops it."""
+
+    async def _listen_start(self, message: ListenStart) -> None:
+        # The speech models are not part of the core yet, so no listening can start.
+        await self._send(
+            ErrorMessage(id=message.id, code="voice_unavailable", message=VOICE_UNAVAILABLE_MESSAGE)
+        )
+        await self._send(ListenEnd(id=message.id, reason="cancelled"))
 
     async def close(self) -> None:
         for task in self._tasks:

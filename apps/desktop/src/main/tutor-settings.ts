@@ -6,7 +6,12 @@ import type {
   SaveResult,
   SettingsView
 } from '../shared/api'
-import type { ClientMessage, CoreMessage, ProviderConfig } from '../shared/core-protocol'
+import {
+  VOICE_OFF,
+  type ClientMessage,
+  type CoreMessage,
+  type ProviderConfig
+} from '../shared/core-protocol'
 import { findPreset, providerBaseUrl, type ProviderPreset } from '../shared/providers'
 import type { KeyVault } from './key-vault'
 import { checkProviderForm, checkSettingsForm, keyHint } from './provider-settings'
@@ -67,7 +72,9 @@ export class TutorSettings {
     return {
       type: 'configure',
       provider: ready ? providerConfig(preset, provider, this.apiKey as string) : null,
-      persona
+      persona,
+      // The voice settings arrive with the voice section of the settings window.
+      voice: VOICE_OFF
     }
   }
 

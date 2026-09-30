@@ -1,0 +1,9 @@
+{
+  "type": "turn.metrics",
+  "id": "voice-1",
+  "listenedMs": 1840,
+  "transcribeMs": 260,
+  "firstTextMs": 910,
+  "firstAudioMs": 330,
+  "totalMs": 1500
+}

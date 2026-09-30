@@ -3,7 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import type { ClientMessage } from '../shared/core-protocol'
+import { VOICE_OFF, type ClientMessage } from '../shared/core-protocol'
 import { KeyVault } from './key-vault'
 import { SettingsStore } from './settings-store'
 import { FakeCoreConnection, fakeCipher } from './test-helpers'
@@ -44,7 +44,8 @@ describe('TutorSettings', () => {
     expect(tutor().configureMessage()).toEqual({
       type: 'configure',
       provider: null,
-      persona: PERSONA
+      persona: PERSONA,
+      voice: VOICE_OFF
     })
   })
 
@@ -71,7 +72,8 @@ describe('TutorSettings', () => {
     expect(lastConfigure()).toEqual({
       type: 'configure',
       provider: { kind: 'anthropic', baseUrl: null, model: 'claude-opus-5', apiKey: KEY },
-      persona: { name: 'Ana', instructions: '' }
+      persona: { name: 'Ana', instructions: '' },
+      voice: VOICE_OFF
     })
 
     await store.flush()

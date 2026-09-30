@@ -6,9 +6,14 @@ from pydantic import ValidationError
 
 from professor_core.protocol import (
     EMOTIONS,
+    MAX_AUDIO_FRAME_BYTES,
+    AudioKind,
     ProviderConfig,
+    VoiceConfig,
     client_messages,
     core_messages,
+    decode_audio,
+    encode_audio,
 )
 
 FIXTURES = Path(__file__).parents[2] / "protocol" / "fixtures"
@@ -30,6 +35,37 @@ def test_core_fixtures_round_trip(path: Path) -> None:
     raw = load(path)
     message = core_messages.validate_python(raw)
     assert json.loads(message.to_json()) == raw
+
+
+def test_audio_frames_round_trip() -> None:
+    pcm = b"\x01\x00\xff\x7f"
+    frame = encode_audio(AudioKind.MICROPHONE, pcm)
+    assert frame == b"\x01" + pcm
+    assert decode_audio(frame) == (AudioKind.MICROPHONE, pcm)
+    assert decode_audio(encode_audio(AudioKind.SPEECH, pcm)) == (AudioKind.SPEECH, pcm)
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [b"", b"\x07\x00\x00", b"\x01\x00", b"\x01" + b"\x00" * MAX_AUDIO_FRAME_BYTES],
+    ids=["empty", "unknown kind", "odd bytes", "too large"],
+)
+def test_broken_audio_frames_are_rejected(frame: bytes) -> None:
+    with pytest.raises(ValueError):
+        decode_audio(frame)
+
+
+def test_voice_settings_accept_only_known_values() -> None:
+    voice = {
+        "enabled": True,
+        "speakAnswers": True,
+        "spokenLanguage": "auto",
+        "englishVoice": "native",
+    }
+    assert VoiceConfig.model_validate(voice).english_voice == "native"
+    for field, value in (("spokenLanguage", "es"), ("englishVoice", "robot")):
+        with pytest.raises(ValidationError):
+            VoiceConfig.model_validate({**voice, field: value})
 
 
 def test_emotions_match_the_shared_vocabulary() -> None:

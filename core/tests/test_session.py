@@ -3,7 +3,14 @@ import asyncio
 import pytest
 from fake_provider import FakeProvider
 
-from professor_core.protocol import Configure, Message, PersonaConfig, ProviderConfig, UserText
+from professor_core.protocol import (
+    VOICE_OFF,
+    Configure,
+    Message,
+    PersonaConfig,
+    ProviderConfig,
+    UserText,
+)
 from professor_core.session import Session
 
 pytestmark = pytest.mark.anyio
@@ -31,7 +38,7 @@ def configure(fake: FakeProvider) -> Configure:
     provider = ProviderConfig(
         kind="openai-compatible", base_url=fake.openai_base_url, model="gpt-fake", api_key="k"
     )
-    return Configure(provider=provider, persona=PersonaConfig(name="Professor"))
+    return Configure(provider=provider, persona=PersonaConfig(name="Professor"), voice=VOICE_OFF)
 
 
 async def test_replaces_a_pipeline_that_stopped_by_itself(fake_provider: FakeProvider) -> None:
