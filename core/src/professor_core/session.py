@@ -1,10 +1,12 @@
 """Serves one desktop connection: turns protocol messages into a conversation and back."""
 
 import asyncio
+from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Literal
 
 from loguru import logger
+from pipecat.audio.vad.silero import SileroVADAnalyzer
 
 from professor_core.conversation import (
     Conversation,
@@ -14,15 +16,18 @@ from professor_core.conversation import (
     ResponseStarted,
     ResponseText,
 )
+from professor_core.listening import ListenEndReason, Listening, VoiceDetector, transcribe
 from professor_core.markup import MarkupEvent, MarkupParser, TextPiece
 from professor_core.persona import build_system_prompt
 from professor_core.protocol import (
+    MICROPHONE_SAMPLE_RATE,
     ClientMessage,
     Configure,
     CoreMessage,
     ErrorMessage,
     ListenEnd,
     ListenStart,
+    ListenStop,
     ProviderTest,
     ProviderTestResult,
     ResponseCancel,
@@ -31,6 +36,8 @@ from professor_core.protocol import (
     ResponseEnd,
     ResponseStart,
     Segment,
+    SpokenLanguage,
+    Transcript,
     UserText,
     VoiceConfig,
     VoiceStatus,
@@ -44,19 +51,43 @@ MAX_LOGGED_ERROR_LENGTH = 300
 VOICE_UNAVAILABLE_MESSAGE = (
     "Voice is not ready. Turn it on in the settings and wait for the speech models."
 )
+NO_SPEECH_MESSAGE = "I did not hear anything. Try again, a little closer to the microphone."
+# English phrases from recent answers, which help Whisper hear them inside Portuguese.
+MAX_ENGLISH_PHRASES = 30
+
+
+def silero_detector() -> VoiceDetector:
+    detector = SileroVADAnalyzer(sample_rate=MICROPHONE_SAMPLE_RATE)
+    detector.set_sample_rate(MICROPHONE_SAMPLE_RATE)
+    return detector
 
 
 class Session:
-    def __init__(self, send: Send, *, voice: VoiceEngine | None = None) -> None:
+    def __init__(
+        self,
+        send: Send,
+        *,
+        voice: VoiceEngine | None = None,
+        detector_factory: Callable[[], VoiceDetector] = silero_detector,
+    ) -> None:
         self._send = send
         self._voice = voice
+        self._detector_factory = detector_factory
+        self._detector: VoiceDetector | None = None
         self._configuration: Configure | None = None
         self._conversation: Conversation | None = None
         self._parsers: dict[str, MarkupParser] = {}
+        self._answer_pieces: dict[str, list[TextPiece]] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         # The desktop starts from "off", so only changes are worth sending.
         self._reported_voice = VoiceStatus(state="off")
         self._stop_voice_updates: Callable[[], None] | None = None
+        self._listening: Listening | None = None
+        # Questions that Whisper is turning into text, and the ones cancelled meanwhile.
+        self._hearing: set[str] = set()
+        self._abandoned: set[str] = set()
+        self._last_language: SpokenLanguage = "pt"
+        self._english_phrases: deque[str] = deque(maxlen=MAX_ENGLISH_PHRASES)
 
     async def handle(self, message: ClientMessage) -> None:
         if isinstance(message, Configure):
@@ -67,26 +98,104 @@ class Session:
             await self._ask(message)
         elif isinstance(message, ListenStart):
             await self._listen_start(message)
-        elif isinstance(message, ResponseCancel) and self._conversation:
-            await self._conversation.cancel(message.id)
-        # listen.stop needs a listening to stop, and the core cannot listen yet.
+        elif isinstance(message, ListenStop):
+            if self._listening and self._listening.id == message.id:
+                await self._end_listening("stopped")
+        elif isinstance(message, ResponseCancel):
+            await self._cancel(message.id)
 
     async def handle_audio(self, pcm: bytes) -> None:
-        """Microphone audio. The core has no speech models yet, so it drops it."""
+        """Microphone audio for the listening in progress."""
+        listening = self._listening
+        if listening is None:
+            return  # Frames can still arrive right after a listening ends.
+        reason = await listening.feed(pcm)
+        if reason and self._listening is listening:
+            await self._end_listening(reason)
 
     async def _listen_start(self, message: ListenStart) -> None:
-        # Listening arrives with the speech-to-text step. Until then, no listening can start.
-        status = self._reported_voice
-        await self._send(
-            ErrorMessage(
-                id=message.id,
-                code="voice_unavailable",
-                message=status.message or VOICE_UNAVAILABLE_MESSAGE,
+        voice_on = self._configuration is not None and self._configuration.voice.enabled
+        if not voice_on or self._voice is None or self._voice.models is None:
+            status = self._reported_voice
+            await self._send(
+                ErrorMessage(
+                    id=message.id,
+                    code="voice_unavailable",
+                    message=status.message or VOICE_UNAVAILABLE_MESSAGE,
+                )
             )
-        )
-        await self._send(ListenEnd(id=message.id, reason="cancelled"))
+            await self._send(ListenEnd(id=message.id, reason="cancelled"))
+            return
+        if self._listening:
+            await self._end_listening("cancelled")
+        if self._detector is None:
+            self._detector = self._detector_factory()
+        self._listening = Listening(message.id, self._detector)
+
+    async def _end_listening(self, reason: ListenEndReason) -> None:
+        listening, self._listening = self._listening, None
+        if listening is None:
+            return
+        await self._send(ListenEnd(id=listening.id, reason=reason))
+        if reason == "cancelled":
+            return
+        if not listening.heard_speech:
+            await self._send(
+                ErrorMessage(id=listening.id, code="no_speech", message=NO_SPEECH_MESSAGE)
+            )
+            return
+        self._in_background(self._hear(listening))
+
+    async def _hear(self, listening: Listening) -> None:
+        """Turns the question into text, then asks it like a typed one."""
+        models = self._voice.models if self._voice else None
+        if models is None or self._configuration is None:
+            return
+        self._hearing.add(listening.id)
+        try:
+            heard = await asyncio.to_thread(
+                transcribe,
+                models.whisper,
+                listening.audio(),
+                spoken_language=self._configuration.voice.spoken_language,
+                last_language=self._last_language,
+                english_words=list(self._english_phrases),
+            )
+        except Exception:
+            logger.exception("Could not turn the question into text")
+            await self._send(
+                ErrorMessage(
+                    id=listening.id, code="internal", message="Could not hear the question."
+                )
+            )
+            return
+        finally:
+            self._hearing.discard(listening.id)
+        # A cancel, or a new question, arrived while Whisper was working.
+        abandoned = listening.id in self._abandoned
+        self._abandoned.discard(listening.id)
+        if abandoned or self._listening is not None:
+            return
+        if not heard.text:
+            await self._send(
+                ErrorMessage(id=listening.id, code="no_speech", message=NO_SPEECH_MESSAGE)
+            )
+            return
+        self._last_language = heard.lang
+        await self._send(Transcript(id=listening.id, text=heard.text, lang=heard.lang))
+        await self._ask(UserText(id=listening.id, text=heard.text))
+
+    async def _cancel(self, question_id: str) -> None:
+        if self._listening and self._listening.id == question_id:
+            await self._end_listening("cancelled")
+            return
+        if question_id in self._hearing:
+            self._abandoned.add(question_id)
+        if self._conversation:
+            await self._conversation.cancel(question_id)
 
     async def close(self) -> None:
+        self._listening = None
         self._stop_following_voice()
         for task in self._tasks:
             task.cancel()
@@ -206,13 +315,27 @@ class Session:
     ) -> None:
         await self._start(response_id)
         await self._send_markup(response_id, self._parsers.pop(response_id).finish())
+        self._remember_english(self._answer_pieces.pop(response_id, []))
         await self._send(ResponseEnd(id=response_id, reason=reason))
+
+    def _remember_english(self, pieces: list[TextPiece]) -> None:
+        """Keeps the English phrases of an answer. Spans can arrive split across pieces."""
+        phrase: list[str] = []
+        for piece in [*pieces, TextPiece(text="", lang=None)]:
+            if piece.lang == "en":
+                phrase.append(piece.text)
+                continue
+            text = "".join(phrase).strip()
+            phrase = []
+            if text and text not in self._english_phrases:
+                self._english_phrases.append(text)
 
     async def _send_markup(self, response_id: str, events: list[MarkupEvent]) -> None:
         segments: list[Segment] = []
         for event in events:
             if isinstance(event, TextPiece):
                 segments.append(Segment(text=event.text, lang=event.lang))
+                self._answer_pieces.setdefault(response_id, []).append(event)
                 continue
             if segments:
                 await self._send(ResponseDelta(id=response_id, segments=segments))
