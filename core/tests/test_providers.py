@@ -76,6 +76,14 @@ async def test_openai_compatible_answers_do_not_wait_forever(fake_provider: Fake
     await client.close()
 
 
+async def test_an_overloaded_provider_suggests_another_model(fake_provider: FakeProvider) -> None:
+    with pytest.raises(Exception) as caught:
+        await list_models(openai_provider(fake_provider, DOWN_KEY), max_retries=0)
+    code, message = describe_provider_error(caught.value)
+    assert code == "provider_unavailable"
+    assert "another model" in message
+
+
 def test_timeouts_say_the_provider_was_too_slow() -> None:
     code, message = describe_provider_error(TimeoutError("no words"))
     assert code == "provider_unavailable"

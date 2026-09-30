@@ -182,7 +182,12 @@ def describe_provider_error(error: BaseException) -> tuple[ErrorCode, str]:
         return "bad_request", "The provider rejected the request."
     if isinstance(error, anthropic.APIStatusError | openai.APIStatusError):
         if error.status_code >= 500:
-            return "provider_unavailable", "The provider is unavailable right now. Try again soon."
+            # Often only one model is overloaded, so another one may work at once.
+            return (
+                "provider_unavailable",
+                "The provider is busy or unavailable right now. "
+                "Try again soon, or pick another model.",
+            )
         return "bad_request", "The provider rejected the request."
     # Timeouts first: the SDK timeout errors are also connection errors.
     if isinstance(error, anthropic.APITimeoutError | openai.APITimeoutError | TimeoutError):
