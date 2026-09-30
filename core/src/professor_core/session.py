@@ -41,6 +41,7 @@ MAX_LOGGED_ERROR_LENGTH = 300
 class Session:
     def __init__(self, send: Send) -> None:
         self._send = send
+        self._configuration: Configure | None = None
         self._conversation: Conversation | None = None
         self._parsers: dict[str, MarkupParser] = {}
         self._tasks: set[asyncio.Task[None]] = set()
@@ -63,19 +64,30 @@ class Session:
             await conversation.close()
 
     async def _configure(self, message: Configure) -> None:
+        self._configuration = message
+        await self._restart_conversation()
+
+    async def _restart_conversation(self) -> None:
         # A new provider or persona needs a new pipeline. The history carries over.
         previous, self._conversation = self._conversation, None
         history = previous.history if previous else []
         if previous:
             await previous.close()
-        if message.provider is None:
+        configuration = self._configuration
+        if configuration is None or configuration.provider is None:
             return
-        llm = await create_llm_service(message.provider, build_system_prompt(message.persona))
+        llm = await create_llm_service(
+            configuration.provider, build_system_prompt(configuration.persona)
+        )
         conversation = Conversation(llm, self._on_event, history=history)
         await conversation.start()
         self._conversation = conversation
 
     async def _ask(self, message: UserText) -> None:
+        if self._conversation is not None and not self._conversation.alive:
+            # A pipeline that stopped by itself would swallow every question from now on.
+            logger.warning("The conversation pipeline had stopped. Starting a new one.")
+            await self._restart_conversation()
         if self._conversation is None:
             await self._send(ResponseStart(id=message.id))
             await self._send(

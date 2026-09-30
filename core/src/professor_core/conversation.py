@@ -108,7 +108,10 @@ class Conversation:
                     _ResponseWatcher(self._on_start, self._on_text, self._on_end),
                     assistant,
                 ]
-            )
+            ),
+            # Pipecat stops a pipeline after five minutes without voice frames, which a text
+            # conversation never has. The session decides when a conversation ends.
+            idle_timeout_secs=None,
         )
         self._runner: asyncio.Task[None] | None = None
         self._active: _Response | None = None
@@ -116,6 +119,11 @@ class Conversation:
         # True between the end of an answer and the moment it is saved in the history.
         self._saving = False
         self._timers: set[asyncio.Task[None]] = set()
+
+    @property
+    def alive(self) -> bool:
+        """False once the pipeline has stopped, after which it can no longer answer."""
+        return self._runner is not None and not self._runner.done()
 
     @property
     def history(self) -> list[Any]:

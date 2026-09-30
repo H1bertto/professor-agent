@@ -18,12 +18,13 @@ Phase 2 makes the avatar answer questions. The student types a question, the tea
 
 ADR 0001 picked Pipecat for the voice pipeline. We tried it for text first, with a decision gate: if Pipecat got in the way of plain text, we would call the provider SDKs directly and bring Pipecat in with voice. It stayed. A pipeline of the user aggregator, the LLM service, and the assistant aggregator (`LLMContextAggregatorPair`) streams the answer, keeps the history, and handles interruption with `InterruptionFrame`, which is exactly what voice needs next.
 
-Four problems came up and are handled in [`conversation.py`](../../core/src/professor_core/conversation.py) and [`providers.py`](../../core/src/professor_core/providers.py):
+Five problems came up and are handled in [`conversation.py`](../../core/src/professor_core/conversation.py) and [`providers.py`](../../core/src/professor_core/providers.py):
 
 - A new question could reach the history before the previous answer was saved. The next question now waits for `on_assistant_turn_stopped`, for at most one second.
 - The Anthropic and OpenAI services left their HTTP clients open. Small subclasses close them in `cleanup`.
 - Only one answer runs at a time. A new question cancels the running one.
 - A silent provider left the bubble on "Thinking..." for minutes. Pipecat marks an answer as started before the provider replies, and its OpenAI client waits up to ten minutes. Requests now time out after 30 seconds without data, and an answer with no words after 45 seconds stops with an error. The desktop also gives up after 90 seconds, in case the core itself stops responding.
+- The pipeline stopped by itself five minutes after it started. Pipecat cancels a pipeline that sees no voice frames for that long, and a text conversation never has them. The core turns that timeout off, and if a pipeline stops anyway, the session starts a new one on the next question and keeps the history.
 
 The core keeps the last 20 messages in memory. A new provider or persona rebuilds the pipeline and keeps the history. Nothing is saved to disk yet: lessons and memory are phase 5.
 

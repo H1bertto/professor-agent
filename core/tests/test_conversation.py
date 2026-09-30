@@ -13,6 +13,7 @@ from fake_provider import (
     FakeProvider,
 )
 
+from professor_core import conversation as conversation_module
 from professor_core import providers
 from professor_core.conversation import (
     Conversation,
@@ -251,6 +252,27 @@ async def test_only_gemini_gets_a_reasoning_effort(
     request = fake_provider.last_request("/v1/chat/completions")
     assert request.body is not None
     assert request.body["reasoning_effort"] == "low"
+
+
+async def test_the_pipeline_never_stops_for_being_idle(
+    talk, fake_provider: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pipecat's default stops a pipeline after five minutes without voice frames.
+    options: dict[str, object] = {}
+    real_worker = conversation_module.PipelineWorker
+
+    def spy(*args: object, **kwargs: object) -> object:
+        options.update(kwargs)
+        return real_worker(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(conversation_module, "PipelineWorker", spy)
+    conversation, _ = await talk(openai_provider(fake_provider))
+
+    assert "idle_timeout_secs" in options
+    assert options["idle_timeout_secs"] is None
+    assert conversation.alive
+    await conversation.close()
+    assert not conversation.alive
 
 
 async def test_closing_cancels_the_running_answer(talk, fake_provider: FakeProvider) -> None:
