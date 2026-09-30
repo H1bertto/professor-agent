@@ -53,6 +53,14 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+/** Blends from `from` (amount 0) to `to` (amount 1). */
+export function mix(from: number, to: number, amount: number): number {
+  return from + (to - from) * clamp(amount, 0, 1)
+}
+
+/** Where a thinking avatar looks: up and to the side, in the same units as LookTarget. */
+export const THINKING_GAZE = { x: 0.5, y: -0.7 }
+
 /** A mouth movement that looks like speech: quick syllables inside slower phrases. */
 export function talkingMouth(timeSeconds: number): number {
   const syllables = Math.abs(Math.sin(timeSeconds * 11))

@@ -7,7 +7,7 @@ import {
   type Emotion,
   type LookTarget
 } from '../../../../shared/avatar'
-import { approach, breathing, clamp, createBlinker } from '../motion'
+import { approach, breathing, clamp, createBlinker, mix, THINKING_GAZE } from '../motion'
 import type { AvatarRenderer } from '../types'
 
 const MAX_PIXEL_RATIO = 1.5
@@ -38,6 +38,9 @@ export class VrmAvatar implements AvatarRenderer {
   private mouthTarget = 0
   private look: LookTarget = { x: 0, y: 0 }
   private lookGoal: LookTarget = { x: 0, y: 0 }
+  /** How much of the thinking and speaking poses shows, from 0 to 1, so changes are smooth. */
+  private thinking = 0
+  private speaking = 0
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
@@ -122,7 +125,6 @@ export class VrmAvatar implements AvatarRenderer {
     this.renderer.dispose()
   }
 
-  /** The current state, kept for the listening and thinking animations of later phases. */
   get currentState(): AvatarState {
     return this.state
   }
@@ -142,17 +144,27 @@ export class VrmAvatar implements AvatarRenderer {
   }
 
   private animateBody(deltaSeconds: number): void {
+    this.thinking = approach(this.thinking, this.state === 'thinking' ? 1 : 0, 5, deltaSeconds)
+    this.speaking = approach(this.speaking, this.state === 'speaking' ? 1 : 0, 5, deltaSeconds)
+    // While thinking, the avatar looks up and away from the cursor, then comes back.
+    const goal = {
+      x: mix(clamp(this.lookGoal.x, -1.5, 1.5), THINKING_GAZE.x, this.thinking),
+      y: mix(clamp(this.lookGoal.y, -1.5, 1.5), THINKING_GAZE.y, this.thinking)
+    }
     this.look = {
-      x: approach(this.look.x, clamp(this.lookGoal.x, -1.5, 1.5), 4, deltaSeconds),
-      y: approach(this.look.y, clamp(this.lookGoal.y, -1.5, 1.5), 4, deltaSeconds)
+      x: approach(this.look.x, goal.x, 4, deltaSeconds),
+      y: approach(this.look.y, goal.y, 4, deltaSeconds)
     }
     const yaw = clamp(this.look.x, -1, 1) * 0.5
     const pitch = clamp(this.look.y, -1, 1) * 0.3
     const breath = breathing(this.time)
     const sway = Math.sin(this.time * 0.6) * 0.02
+    const tilt = this.thinking * 0.12
+    // Small nods while the teacher talks.
+    const nod = this.speaking * Math.sin(this.time * 4.2) * 0.025
 
-    this.bone('neck')?.rotation.set(pitch * 0.4, yaw * 0.4, 0)
-    this.bone('head')?.rotation.set(pitch * 0.6, yaw * 0.6, sway)
+    this.bone('neck')?.rotation.set(pitch * 0.4, yaw * 0.4, tilt * 0.3)
+    this.bone('head')?.rotation.set(pitch * 0.6 + nod, yaw * 0.6, sway + tilt)
     this.bone('chest')?.rotation.set(breath * 0.015, 0, 0)
     this.bone('spine')?.rotation.set(0, 0, sway * 0.5)
     this.bone('leftShoulder')?.rotation.set(0, 0, breath * 0.02)

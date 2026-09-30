@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ask Professor Agent</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: rgba(255, 255, 255, 0.98);
+        --border: #d0d7de;
+        --text: #1f2328;
+        --muted: #59636e;
+        --accent: #2f6fdb;
+        --on-accent: #ffffff;
+        --error: #cf222e;
+        font:
+          14px system-ui,
+          'Segoe UI',
+          sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: rgba(31, 35, 41, 0.98);
+          --border: #3d444d;
+          --text: #e6edf3;
+          --muted: #9198a1;
+          --accent: #5b93f0;
+          --on-accent: #0d1117;
+          --error: #f85149;
+        }
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+      form {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        height: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      input {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        outline: none;
+      }
+      input:focus {
+        border-color: var(--accent);
+      }
+      button {
+        padding: 0 14px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font: inherit;
+        cursor: pointer;
+      }
+      #hint {
+        margin: 0;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      #hint.error {
+        color: var(--error);
+      }
+    </style>
+  </head>
+
+  <body>
+    <form id="ask" autocomplete="off">
+      <div class="row">
+        <input id="question" maxlength="8000" aria-label="Your question" />
+        <button type="submit">Ask</button>
+      </div>
+      <p id="hint" role="status"></p>
+    </form>
+    <script type="module" src="/src/ask/main.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createClickThroughController } from './click-through'
+import { createClickThroughController, isClick } from './click-through'
+
+describe('isClick', () => {
+  const start = { x: 100, y: 100, time: 0 }
+
+  it('accepts a short press that barely moves', () => {
+    expect(isClick(start, { x: 102, y: 101, time: 120 })).toBe(true)
+  })
+
+  it('treats movement or a long press as something else', () => {
+    expect(isClick(start, { x: 110, y: 100, time: 120 })).toBe(false)
+    expect(isClick(start, { x: 100, y: 100, time: 600 })).toBe(false)
+  })
+})
 
 function setup(): {
   controller: ReturnType<typeof createClickThroughController>

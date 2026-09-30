@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ASK_SIZE,
+  BUBBLE_MAX_HEIGHT,
+  BUBBLE_MIN_HEIGHT,
+  BUBBLE_WIDTH,
   clampToWorkArea,
+  companionBounds,
   containsPoint,
   defaultOverlayBounds,
   dragBounds,
@@ -95,5 +100,32 @@ describe('resizeKeepingBase', () => {
   it('shrinks with negative steps and stops at the minimum', () => {
     expect(resizeKeepingBase(bounds, -1).height).toBe(364)
     expect(resizeKeepingBase(bounds, -50).height).toBe(OVERLAY_MIN_HEIGHT)
+  })
+})
+
+describe('companionBounds', () => {
+  const corner = { x: 1596, y: 616, width: 300, height: 400 }
+
+  it('puts the question box beside the bottom of the avatar and the bubble above it', () => {
+    const { ask, bubble } = companionBounds(corner, FULL_HD, 200)
+    expect(ask).toEqual({ x: 1204, y: 928, ...ASK_SIZE })
+    expect(bubble).toEqual({ x: 1244, y: 716, width: BUBBLE_WIDTH, height: 200 })
+  })
+
+  it('uses the right side when the avatar is at the left edge', () => {
+    const { ask, bubble } = companionBounds({ ...corner, x: 24 }, FULL_HD, 200)
+    expect(ask.x).toBe(336)
+    expect(bubble.x).toBe(336)
+  })
+
+  it('puts the bubble below the question box when there is no room above', () => {
+    const { ask, bubble } = companionBounds({ ...corner, y: 0 }, FULL_HD, 360)
+    expect(ask.y).toBe(312)
+    expect(bubble.y).toBe(412)
+  })
+
+  it('keeps the bubble height within limits', () => {
+    expect(companionBounds(corner, FULL_HD, 5000).bubble.height).toBe(BUBBLE_MAX_HEIGHT)
+    expect(companionBounds(corner, FULL_HD, 1).bubble.height).toBe(BUBBLE_MIN_HEIGHT)
   })
 })

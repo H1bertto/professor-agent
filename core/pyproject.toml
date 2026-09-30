@@ -10,6 +10,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
+    "pipecat-ai[anthropic]>=1.12,<2",
     "uvicorn[standard]>=0.54.0",
 ]
 

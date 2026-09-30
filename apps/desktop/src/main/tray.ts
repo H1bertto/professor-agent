@@ -4,6 +4,7 @@ import { EMOTIONS, type AvatarChoice, type Emotion } from '../shared/avatar'
 import type { AvatarOption } from './avatar-library'
 
 export const TOGGLE_OVERLAY_SHORTCUT = 'CommandOrControl+Alt+P'
+export const ASK_SHORTCUT = 'CommandOrControl+Alt+Space'
 
 export interface TrayState {
   overlayVisible: boolean
@@ -15,6 +16,7 @@ export interface TrayState {
 
 export interface TrayActions {
   state(): TrayState
+  ask(): void
   toggleOverlay(): void
   selectAvatar(choice: AvatarChoice): void
   importVrm(): void
@@ -22,7 +24,7 @@ export interface TrayActions {
   previewEmotion(emotion: Emotion): void
   previewTalking(talking: boolean): void
   resetPosition(): void
-  showStatus(): void
+  showSettings(): void
   quit(): void
 }
 
@@ -57,6 +59,7 @@ function menu(actions: TrayActions, refresh: () => void): MenuItemConstructorOpt
   }))
 
   return [
+    { label: 'Ask a question...', accelerator: ASK_SHORTCUT, click: actions.ask },
     {
       label: state.overlayVisible ? 'Hide avatar' : 'Show avatar',
       accelerator: TOGGLE_OVERLAY_SHORTCUT,
@@ -88,7 +91,7 @@ function menu(actions: TrayActions, refresh: () => void): MenuItemConstructorOpt
     },
     { label: 'Reset position', click: actions.resetPosition },
     { type: 'separator' },
-    { label: 'Status and credits', click: actions.showStatus },
+    { label: 'Settings and credits...', click: actions.showSettings },
     { label: 'Quit', click: actions.quit }
   ]
 }

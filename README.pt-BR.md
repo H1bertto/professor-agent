@@ -4,7 +4,7 @@ Um professor de estudos local e open source que fica na sua área de trabalho. E
 
 [Read in English](README.md)
 
-> **Status:** início do desenvolvimento. Ainda não tem nada para instalar. Acompanhe pelo [roadmap](docs/roadmap.md).
+> **Status:** início do desenvolvimento. O avatar sobreposto e o chat por texto com o seu próprio provedor de IA já funcionam em builds de desenvolvimento, e a voz vem a seguir. Ainda não tem nada para instalar. Acompanhe pelo [roadmap](docs/roadmap.md).
 
 ## Por que mais um avatar com IA?
 

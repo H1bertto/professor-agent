@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "id": "msg-1",
+  "code": "rate_limited",
+  "message": "The provider is receiving too many requests. Try again in a moment."
+}

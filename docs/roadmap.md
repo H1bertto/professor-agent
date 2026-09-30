@@ -19,11 +19,11 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 - [x] Import your own VRM or PNGTuber avatar ([guide](avatars.md), [ADR 0002](adr/0002-avatar-overlay.md))
 
 ### Phase 2: Text chat with your AI provider
-- [ ] Python core with FastAPI and a local WebSocket
-- [ ] Provider settings screen: OpenAI-compatible APIs and Anthropic
-- [ ] API keys stored in the operating system credential store
-- [ ] LLM output format with emotion tags and language spans
-- [ ] Streaming answer bubble and avatar expressions
+- [x] Python core with FastAPI and a local WebSocket ([protocol](protocol.md))
+- [x] Provider settings screen: OpenAI-compatible APIs and Anthropic
+- [x] API keys encrypted by the operating system
+- [x] LLM output format with emotion tags and language spans
+- [x] Streaming answer bubble and avatar expressions ([ADR 0003](adr/0003-text-chat.md))
 
 ### Phase 3: Voice with a hotkey
 - [ ] Microphone capture with echo cancellation, streamed as 16 kHz PCM

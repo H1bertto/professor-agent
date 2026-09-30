@@ -1,18 +1,42 @@
 import { AVATAR_ID_PATTERN, type AvatarChoice } from '../shared/avatar'
+import type { PersonaConfig } from '../shared/core-protocol'
+import {
+  DEFAULT_PERSONA,
+  findPreset,
+  isSafeBaseUrl,
+  LIMITS,
+  type ProviderPresetId
+} from '../shared/providers'
 import type { Rect } from './window-bounds'
+
+export interface StoredProvider {
+  preset: ProviderPresetId
+  /** Only for the `custom` preset. The others always use their own address. */
+  baseUrl: string | null
+  model: string
+  /** The API key encrypted by the operating system (see key-vault.ts), in base64. */
+  encryptedKey: string
+}
 
 export interface Settings {
   version: 1
   avatar: AvatarChoice
   /** Where the student left the overlay. `null` means the default corner. */
   overlayBounds: Rect | null
+  provider: StoredProvider | null
+  persona: PersonaConfig
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   avatar: { kind: 'vrm', id: 'builtin:seed-san' },
-  overlayBounds: null
+  overlayBounds: null,
+  provider: null,
+  persona: DEFAULT_PERSONA
 }
+
+// Encrypted keys are a little longer than the keys themselves, in base64.
+const MAX_ENCRYPTED_KEY_LENGTH = 4096
 
 /** Reads settings from untrusted JSON. Any invalid field falls back to its default. */
 export function parseSettings(raw: unknown): Settings {
@@ -20,8 +44,39 @@ export function parseSettings(raw: unknown): Settings {
   return {
     version: 1,
     avatar: parseAvatarChoice(raw.avatar) ?? { ...DEFAULT_SETTINGS.avatar },
-    overlayBounds: parseRect(raw.overlayBounds)
+    overlayBounds: parseRect(raw.overlayBounds),
+    provider: parseProvider(raw.provider),
+    persona: parsePersona(raw.persona)
   }
+}
+
+function parseProvider(value: unknown): StoredProvider | null {
+  if (!isRecord(value)) return null
+  const { preset, baseUrl, model, encryptedKey } = value
+  const found = findPreset(preset)
+  if (!found || !isText(model, LIMITS.model) || !isText(encryptedKey, MAX_ENCRYPTED_KEY_LENGTH)) {
+    return null
+  }
+  if (found.id !== 'custom') return { preset: found.id, baseUrl: null, model, encryptedKey }
+  if (!isText(baseUrl, LIMITS.baseUrl) || !isSafeBaseUrl(baseUrl)) return null
+  return { preset: found.id, baseUrl, model, encryptedKey }
+}
+
+function parsePersona(value: unknown): PersonaConfig {
+  if (!isRecord(value)) return { ...DEFAULT_PERSONA }
+  const { name, instructions } = value
+  return {
+    name: isText(name, LIMITS.personaName) ? name : DEFAULT_PERSONA.name,
+    instructions:
+      typeof instructions === 'string' && instructions.length <= LIMITS.instructions
+        ? instructions
+        : DEFAULT_PERSONA.instructions
+  }
+}
+
+/** A non-empty string no longer than `maxLength`. */
+function isText(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength
 }
 
 function parseAvatarChoice(value: unknown): AvatarChoice | null {

@@ -1,0 +1,10 @@
+{
+  "type": "provider.test",
+  "requestId": "test-1",
+  "provider": {
+    "kind": "openai-compatible",
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "model": "llama-3.3-70b-versatile",
+    "apiKey": "test-key-not-real"
+  }
+}
