@@ -43,6 +43,7 @@ from professor_core.protocol import (
     VoiceStatus,
 )
 from professor_core.providers import create_llm_service, describe_provider_error, list_models
+from professor_core.speaking import SendAudio, Speaker, guess_language
 from professor_core.speech_models import VoiceEngine
 
 Send = Callable[[CoreMessage], Awaitable[None]]
@@ -67,11 +68,16 @@ class Session:
         self,
         send: Send,
         *,
+        send_audio: SendAudio | None = None,
         voice: VoiceEngine | None = None,
         detector_factory: Callable[[], VoiceDetector] = silero_detector,
     ) -> None:
         self._send = send
+        self._send_audio = send_audio
         self._voice = voice
+        self._speakers: dict[str, Speaker] = {}
+        # The language each question was asked in, which the answer is spoken in.
+        self._question_languages: dict[str, SpokenLanguage] = {}
         self._detector_factory = detector_factory
         self._detector: VoiceDetector | None = None
         self._configuration: Configure | None = None
@@ -183,7 +189,7 @@ class Session:
             return
         self._last_language = heard.lang
         await self._send(Transcript(id=listening.id, text=heard.text, lang=heard.lang))
-        await self._ask(UserText(id=listening.id, text=heard.text))
+        await self._ask(UserText(id=listening.id, text=heard.text), language=heard.lang)
 
     async def _cancel(self, question_id: str) -> None:
         if self._listening and self._listening.id == question_id:
@@ -196,6 +202,9 @@ class Session:
 
     async def close(self) -> None:
         self._listening = None
+        for speaker in self._speakers.values():
+            speaker.stop()
+        self._speakers.clear()
         self._stop_following_voice()
         for task in self._tasks:
             task.cancel()
@@ -255,12 +264,14 @@ class Session:
         await conversation.start()
         self._conversation = conversation
 
-    async def _ask(self, message: UserText) -> None:
+    async def _ask(self, message: UserText, *, language: SpokenLanguage | None = None) -> None:
+        self._question_languages[message.id] = language or self._typed_language(message.text)
         if self._conversation is not None and not self._conversation.alive:
             # A pipeline that stopped by itself would swallow every question from now on.
             logger.warning("The conversation pipeline had stopped. Starting a new one.")
             await self._restart_conversation()
         if self._conversation is None:
+            self._question_languages.pop(message.id, None)
             await self._send(ResponseStart(id=message.id))
             await self._send(
                 ErrorMessage(
@@ -309,6 +320,28 @@ class Session:
         if response_id not in self._parsers:
             self._parsers[response_id] = MarkupParser()
             await self._send(ResponseStart(id=response_id))
+            self._start_speaking(response_id)
+
+    def _start_speaking(self, response_id: str) -> None:
+        language = self._question_languages.pop(response_id, self._last_language)
+        kokoro = self._voice.models.kokoro if self._voice and self._voice.models else None
+        voice = self._configuration.voice if self._configuration else None
+        if not (voice and voice.enabled and voice.speak_answers and kokoro and self._send_audio):
+            return
+        self._speakers[response_id] = Speaker(
+            response_id,
+            kokoro,
+            main_language=language,
+            english_voice=voice.english_voice,
+            send=self._send,
+            send_audio=self._send_audio,
+        )
+
+    def _typed_language(self, text: str) -> SpokenLanguage:
+        spoken = self._configuration.voice.spoken_language if self._configuration else "auto"
+        if spoken != "auto":
+            return spoken
+        return guess_language(text) or self._last_language
 
     async def _end(
         self, response_id: str, reason: Literal["complete", "cancelled", "error"]
@@ -317,6 +350,12 @@ class Session:
         await self._send_markup(response_id, self._parsers.pop(response_id).finish())
         self._remember_english(self._answer_pieces.pop(response_id, []))
         await self._send(ResponseEnd(id=response_id, reason=reason))
+        if speaker := self._speakers.pop(response_id, None):
+            # Speech can run behind the text, so it ends on its own after the last sentence.
+            if reason == "complete":
+                speaker.finish()
+            else:
+                speaker.stop("cancelled" if reason == "cancelled" else "error")
 
     def _remember_english(self, pieces: list[TextPiece]) -> None:
         """Keeps the English phrases of an answer. Spans can arrive split across pieces."""
@@ -331,6 +370,8 @@ class Session:
                 self._english_phrases.append(text)
 
     async def _send_markup(self, response_id: str, events: list[MarkupEvent]) -> None:
+        if speaker := self._speakers.get(response_id):
+            speaker.add(event for event in events if isinstance(event, TextPiece))
         segments: list[Segment] = []
         for event in events:
             if isinstance(event, TextPiece):

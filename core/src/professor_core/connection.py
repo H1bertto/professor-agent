@@ -60,8 +60,13 @@ async def serve_connection(
         async with send_lock:
             await websocket.send_text(message.to_json())
 
+    # One lock for both, so speech frames stay behind the speech.segment they belong to.
+    async def send_audio(frame: bytes) -> None:
+        async with send_lock:
+            await websocket.send_bytes(frame)
+
     await send(Ready(core=__version__))
-    session = Session(send, voice=voice)
+    session = Session(send, send_audio=send_audio, voice=voice)
     try:
         while True:
             frame = await websocket.receive()

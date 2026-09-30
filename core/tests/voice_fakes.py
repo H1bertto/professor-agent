@@ -51,17 +51,38 @@ class ScriptedDetector:
         return VADState.SPEAKING if self._chunks <= self.speaking else VADState.QUIET
 
 
+class FakeTokenizer:
+    def phonemize(self, text: str, lang: str) -> str:
+        return f"<{lang}:{text.strip()}>"
+
+
+@dataclass
+class FakeKokoro:
+    """Renders 100 samples per character, and remembers each call."""
+
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    tokenizer: FakeTokenizer = field(default_factory=FakeTokenizer)
+
+    def create(
+        self, text: str, *, voice: str, lang: str = "en-us", is_phonemes: bool = False
+    ) -> tuple[np.ndarray, int]:
+        self.calls.append({"text": text, "voice": voice, "lang": lang, "is_phonemes": is_phonemes})
+        return np.full(len(text) * 100, 0.1, dtype=np.float32), 24_000
+
+
 def chunk(seconds: float = 0.032) -> bytes:
     """Microphone audio of this length, as the desktop sends it."""
     return b"\x00\x00" * int(16_000 * seconds)
 
 
-async def ready_engine(folder: Path, whisper: FakeWhisper | None = None) -> VoiceEngine:
+async def ready_engine(
+    folder: Path, whisper: FakeWhisper | None = None, kokoro: FakeKokoro | None = None
+) -> VoiceEngine:
     engine = VoiceEngine(
         folder,
         check=lambda: None,
         downloader=lambda folder, *, progress: None,
-        loader=lambda folder: SpeechModels(whisper=whisper or FakeWhisper(), kokoro=None),
+        loader=lambda folder: SpeechModels(whisper=whisper or FakeWhisper(), kokoro=kokoro),
     )
     engine.start()
     await engine.wait()

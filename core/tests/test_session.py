@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 from fake_provider import FakeProvider
-from voice_fakes import ScriptedDetector, chunk, ready_engine, types
+from voice_fakes import FakeKokoro, ScriptedDetector, chunk, ready_engine, types
 
 from professor_core.protocol import (
     VOICE_OFF,
@@ -16,6 +16,7 @@ from professor_core.protocol import (
     ProviderConfig,
     ResponseCancel,
     ResponseEnd,
+    SpeechEnd,
     Transcript,
     UserText,
     VoiceConfig,
@@ -178,6 +179,34 @@ async def test_listening_needs_voice_on(fake_provider: FakeProvider, tmp_path: P
 
     assert types(outbox.messages[-2:]) == ["error", "listen.end"]
     assert outbox.messages[-2].code == "voice_unavailable"  # type: ignore[attr-defined]
+    await session.close()
+
+
+async def test_speaks_the_answer_while_the_text_streams(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    kokoro = FakeKokoro()
+    engine = await ready_engine(tmp_path, kokoro=kokoro)
+    outbox = Outbox()
+    audio: list[bytes] = []
+
+    async def send_audio(frame: bytes) -> None:
+        audio.append(frame)
+
+    session = Session(outbox, send_audio=send_audio, voice=engine)
+    speaking = VOICE_ON.model_copy(update={"speak_answers": True})
+    await session.handle(configure(fake_provider).model_copy(update={"voice": speaking}))
+    await session.handle(UserText(id="q1", text="Qual a diferença entre since e for?"))
+
+    sent = await outbox.until("q1", "speech.end")
+    kinds = types(sent)
+    assert kinds.index("speech.start") > kinds.index("response.start")
+    assert sent[-1] == SpeechEnd(id="q1", reason="complete")
+    segments = [m for m in sent if m.type == "speech.segment"]  # type: ignore[attr-defined]
+    assert segments and all(s.lang == "pt" for s in segments)  # type: ignore[attr-defined]
+    assert audio and all(frame[0] == 0x02 for frame in audio)
+    # The fake teacher says <en>since</en>, which the teacher's voice pronounces in English.
+    assert any("<en-us:since>" in call["text"] for call in kokoro.calls)
     await session.close()
 
 
