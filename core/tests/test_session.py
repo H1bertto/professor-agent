@@ -240,6 +240,53 @@ async def test_speaks_the_answer_while_the_text_streams(
     await session.close()
 
 
+async def speaking_behind_the_text(
+    fake: FakeProvider, folder: Path
+) -> tuple[Session, Outbox, FakeKokoro]:
+    """A session whose answer text is done while the teacher still speaks it."""
+    # The first sentence plays, and the second one waits for Kokoro.
+    kokoro = FakeKokoro(hold_from=1)
+    engine = await ready_engine(folder, kokoro=kokoro)
+    outbox = Outbox()
+
+    async def send_audio(frame: bytes) -> None:
+        pass
+
+    session = new_session(
+        outbox, send_audio=send_audio, voice=engine, detector_factory=ScriptedDetector
+    )
+    speaking = VOICE_ON.model_copy(update={"speak_answers": True})
+    await session.handle(configure(fake).model_copy(update={"voice": speaking}))
+    await session.handle(UserText(id="q1", text="since vs for?"))
+    await outbox.until("q1", "speech.segment")
+    await outbox.answer("q1")
+    return session, outbox, kokoro
+
+
+async def test_cancel_stops_speech_that_outlives_the_text(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    session, outbox, kokoro = await speaking_behind_the_text(fake_provider, tmp_path)
+    await session.handle(ResponseCancel(id="q1"))
+    kokoro.release.set()
+
+    sent = await outbox.until("q1", "speech.end")
+    assert SpeechEnd(id="q1", reason="cancelled") in sent
+    await session.close()
+
+
+async def test_a_new_question_stops_the_last_answers_speech(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    session, outbox, kokoro = await speaking_behind_the_text(fake_provider, tmp_path)
+    await session.handle(ListenStart(id="v2"))
+    kokoro.release.set()
+
+    sent = await outbox.until("q1", "speech.end")
+    assert SpeechEnd(id="q1", reason="cancelled") in sent
+    await session.close()
+
+
 async def test_replaces_a_pipeline_that_stopped_by_itself(fake_provider: FakeProvider) -> None:
     outbox = Outbox()
     session = new_session(outbox)

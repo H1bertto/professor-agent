@@ -1,5 +1,6 @@
 """Stand-ins for the speech models and the voice detector, so voice tests need no GPU."""
 
+import threading
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,15 +59,23 @@ class FakeTokenizer:
 
 @dataclass
 class FakeKokoro:
-    """Renders 100 samples per character, and remembers each call."""
+    """Renders 100 samples per character, and remembers each call.
+
+    With `hold_from`, that call and the ones after it wait for `release`, so speech can still be
+    running when a test acts.
+    """
 
     calls: list[dict[str, Any]] = field(default_factory=list)
     tokenizer: FakeTokenizer = field(default_factory=FakeTokenizer)
+    hold_from: int | None = None
+    release: threading.Event = field(default_factory=threading.Event)
 
     def create(
         self, text: str, *, voice: str, lang: str = "en-us", is_phonemes: bool = False
     ) -> tuple[np.ndarray, int]:
         self.calls.append({"text": text, "voice": voice, "lang": lang, "is_phonemes": is_phonemes})
+        if self.hold_from is not None and len(self.calls) > self.hold_from:
+            self.release.wait(timeout=5)
         return np.full(len(text) * 100, 0.1, dtype=np.float32), 24_000
 
 

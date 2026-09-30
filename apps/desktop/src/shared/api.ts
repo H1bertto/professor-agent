@@ -28,17 +28,38 @@ export interface AvatarPose {
   talking: boolean
 }
 
-export type AnswerStatus = 'waiting' | 'streaming' | 'complete' | 'cancelled' | 'error'
+export type AnswerStatus =
+  'listening' | 'waiting' | 'streaming' | 'complete' | 'cancelled' | 'error'
 
 /** One question and the teacher's answer so far. */
 export interface Answer {
   id: string
+  /** Empty while the student is still speaking. */
   question: string
   segments: Segment[]
   status: AnswerStatus
   /** Why the answer failed, in words for the student. */
   error: string | null
+  /** `playing` while the answer is heard, which can last after the text is complete. */
+  speech: 'none' | 'playing' | 'done'
+  /** The parts of the answer as the teacher says them, for subtitles. */
+  speechParts: string[]
+  /** The part the student hears now, or `null`. */
+  speakingIndex: number | null
 }
+
+/** What the main process asks the overlay to play. */
+export type SpeechCommand =
+  | { type: 'start'; sampleRate: number }
+  | { type: 'segment'; index: number }
+  | { type: 'audio'; pcm: Uint8Array }
+  /** No more audio is coming. The overlay reports `finished` once the last of it has played. */
+  | { type: 'end' }
+  /** Stop at once and drop what is queued, for example when the student interrupts. */
+  | { type: 'stop' }
+
+/** What the overlay tells the main process about the speech it plays. */
+export type SpeechReport = { type: 'segment'; index: number } | { type: 'finished' }
 
 /** What the answer bubble shows. */
 export interface AnswerView {
@@ -106,6 +127,11 @@ export const IpcChannel = {
   overlayDragEnd: 'overlay:drag-end',
   overlayResize: 'overlay:resize',
   overlayClick: 'overlay:click',
+  overlayMicrophone: 'overlay:microphone',
+  overlayMicrophoneAudio: 'overlay:microphone-audio',
+  overlayMicrophoneFailed: 'overlay:microphone-failed',
+  overlaySpeech: 'overlay:speech',
+  overlaySpeechReport: 'overlay:speech-report',
   askOpened: 'ask:opened',
   askSubmit: 'ask:submit',
   askClose: 'ask:close',
@@ -133,6 +159,14 @@ export interface OverlayApi {
   resize(steps: number): void
   /** The student clicked the avatar without dragging it, which opens the question box. */
   click(): void
+  /** `true` opens the microphone for a spoken question, and `false` closes it. */
+  onMicrophone(listener: (on: boolean) => void): () => void
+  /** 16-bit mono PCM at 16 kHz from the microphone. */
+  sendMicrophoneAudio(pcm: Uint8Array): void
+  /** The microphone could not open, for example because access was denied. */
+  microphoneFailed(message: string): void
+  onSpeech(listener: (command: SpeechCommand) => void): () => void
+  reportSpeech(report: SpeechReport): void
 }
 
 /** Calls available to the question box. */

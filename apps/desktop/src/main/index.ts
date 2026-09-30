@@ -20,10 +20,11 @@ import { avatarRoots, settingsFile } from './paths'
 import { SettingsStore } from './settings-store'
 import { isSettingsWindow, sendToSettingsWindow, showSettingsWindow } from './settings-window'
 import { systemCipher } from './system-cipher'
-import { ASK_SHORTCUT, createTray, TOGGLE_OVERLAY_SHORTCUT } from './tray'
+import { ASK_SHORTCUT, createTray, TALK_SHORTCUT, TOGGLE_OVERLAY_SHORTCUT } from './tray'
 import { Tutor } from './tutor'
 import { TutorSettings } from './tutor-settings'
 import { importPngTuberFolder, importVrm, listUserAvatars } from './user-avatars'
+import { guardPermissions, registerVoiceChannels } from './voice-channels'
 import { clampToWorkArea, defaultOverlayBounds, overlaySize, type Rect } from './window-bounds'
 
 registerAvatarScheme()
@@ -69,6 +70,7 @@ async function start(): Promise<void> {
   ipcMain.handle(IpcChannel.avatarGet, () => resolveAvatarConfig(currentChoice(), userAvatars))
 
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
+  guardPermissions(overlay)
   registerOverlayControls(overlay, (overlayBounds) => settings.update({ overlayBounds }))
   const stopCursorTracking = startCursorTracking(overlay)
 
@@ -122,8 +124,23 @@ async function start(): Promise<void> {
 
   const tutor = new Tutor(core, {
     answer: (answer) => companions.showAnswer(answer),
-    pose: setPose
+    pose: setPose,
+    microphone: (on) => sendToOverlay(IpcChannel.overlayMicrophone, on),
+    speech: (command) => sendToOverlay(IpcChannel.overlaySpeech, command)
   })
+  registerVoiceChannels(overlay, {
+    microphoneAudio: (pcm) => tutor.hear(pcm),
+    microphoneFailed: (message) => tutor.microphoneFailed(message),
+    speechReport: (report) => tutor.speechReport(report)
+  })
+  const talk = (): void => {
+    // The bubble shows only beside a visible avatar.
+    if (!overlay.isVisible()) {
+      overlay.showInactive()
+      tray.refresh()
+    }
+    tutor.listen()
+  }
   const companions = createCompanionWindows(overlay, {
     teacherName: () => settings.get().persona.name,
     ask: (question) => tutor.ask(question),
@@ -141,6 +158,7 @@ async function start(): Promise<void> {
       talking: pose.talking
     }),
     ask: () => companions.toggleAsk(),
+    talk,
     toggleOverlay,
     selectAvatar,
     importVrm: () => void importAvatar('vrm'),
@@ -161,7 +179,8 @@ async function start(): Promise<void> {
 
   for (const [shortcut, action] of [
     [TOGGLE_OVERLAY_SHORTCUT, toggleOverlay],
-    [ASK_SHORTCUT, () => companions.toggleAsk()]
+    [ASK_SHORTCUT, () => companions.toggleAsk()],
+    [TALK_SHORTCUT, talk]
   ] as const) {
     if (!globalShortcut.register(shortcut, action)) {
       console.warn(`Another app already uses ${shortcut}.`)

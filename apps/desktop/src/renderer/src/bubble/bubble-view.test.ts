@@ -4,7 +4,17 @@ import type { Answer } from '../../../shared/api'
 import { hideDelayMs, isFinished, statusLine } from './bubble-view'
 
 function answer(changes: Partial<Answer> = {}): Answer {
-  return { id: 'q1', question: 'hi', segments: [], status: 'complete', error: null, ...changes }
+  return {
+    id: 'q1',
+    question: 'hi',
+    segments: [],
+    status: 'complete',
+    error: null,
+    speech: 'none',
+    speechParts: [],
+    speakingIndex: null,
+    ...changes
+  }
 }
 
 describe('bubble view', () => {
@@ -12,6 +22,9 @@ describe('bubble view', () => {
     expect(isFinished(answer({ status: 'waiting' }))).toBe(false)
     expect(isFinished(answer({ status: 'streaming' }))).toBe(false)
     expect(isFinished(answer({ status: 'cancelled' }))).toBe(true)
+    expect(isFinished(answer({ status: 'listening' }))).toBe(false)
+    expect(isFinished(answer({ status: 'complete', speech: 'playing' }))).toBe(false)
+    expect(isFinished(answer({ status: 'complete', speech: 'done' }))).toBe(true)
   })
 
   it('keeps longer answers on screen longer, within limits', () => {

@@ -22,7 +22,9 @@ export function createOverlayWindow(bounds: Rect): BrowserWindow {
     focusable: false,
     webPreferences: {
       preload: PRELOAD_PATH,
-      sandbox: true
+      sandbox: true,
+      // The student never clicks the overlay before it speaks, so audio must play without that.
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
 

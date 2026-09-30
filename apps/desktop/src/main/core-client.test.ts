@@ -3,12 +3,19 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocketServer, type WebSocket } from 'ws'
 
 import type { CoreConnectionStatus } from '../shared/api'
-import { VOICE_OFF, type ClientMessage, type CoreMessage } from '../shared/core-protocol'
+import {
+  AudioKind,
+  encodeAudioFrame,
+  VOICE_OFF,
+  type ClientMessage,
+  type CoreMessage
+} from '../shared/core-protocol'
 import { CoreClient, coreSocketUrl, coreToken } from './core-client'
 
 /** A tiny stand-in for the Python core. */
 class FakeCore {
   readonly received: ClientMessage[] = []
+  readonly audio: Buffer[] = []
   readonly origins: (string | undefined)[] = []
   private readonly server: WebSocketServer
   private sockets: WebSocket[] = []
@@ -18,7 +25,11 @@ class FakeCore {
     this.server.on('connection', (socket, request) => {
       this.sockets.push(socket)
       this.origins.push(request.headers.origin)
-      socket.on('message', (data) => {
+      socket.on('message', (data, isBinary) => {
+        if (isBinary) {
+          this.audio.push(data as Buffer)
+          return
+        }
         const message = JSON.parse(data.toString()) as ClientMessage
         this.received.push(message)
         if (message.type === 'hello') {
@@ -44,6 +55,10 @@ class FakeCore {
     for (const socket of this.sockets) {
       socket.send(typeof message === 'string' ? message : JSON.stringify(message))
     }
+  }
+
+  sendBinary(frame: Uint8Array): void {
+    for (const socket of this.sockets) socket.send(frame, { binary: true })
   }
 
   dropConnections(): void {
@@ -189,6 +204,36 @@ describe('CoreClient', () => {
 
     await until(() => connections >= 2)
     expect(statuses).not.toContain('online')
+  })
+
+  it('sends microphone audio as binary frames once online', async () => {
+    const core = await fakeCore()
+    const coreClient = client(core.url)
+    expect(coreClient.sendAudio(new Uint8Array([1, 2]))).toBe(false)
+    coreClient.start()
+    await until(() => coreClient.currentStatus === 'online')
+
+    expect(coreClient.sendAudio(new Uint8Array([1, 2, 3, 4]))).toBe(true)
+    await until(() => core.audio.length === 1)
+    expect([...core.audio[0]]).toEqual([AudioKind.microphone, 1, 2, 3, 4])
+    expect(core.count('hello')).toBe(1)
+  })
+
+  it('passes speech audio on and drops other binary frames', async () => {
+    const core = await fakeCore()
+    const coreClient = client(core.url)
+    const heard: Uint8Array[] = []
+    coreClient.onAudio((pcm) => heard.push(pcm))
+    coreClient.start()
+    await until(() => coreClient.currentStatus === 'online')
+
+    core.sendBinary(encodeAudioFrame(AudioKind.microphone, new Uint8Array([9, 9])))
+    core.sendBinary(new Uint8Array([AudioKind.speech, 1, 2, 3]))
+    core.sendBinary(new Uint8Array([0x07, 1, 2]))
+    core.sendBinary(encodeAudioFrame(AudioKind.speech, new Uint8Array([5, 6, 7, 8])))
+
+    await until(() => heard.length === 1)
+    expect([...heard[0]]).toEqual([5, 6, 7, 8])
   })
 
   it('keeps retrying while the core is down, and stops when asked', async () => {

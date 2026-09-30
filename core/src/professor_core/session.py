@@ -113,6 +113,8 @@ class Session:
         self._send_audio = send_audio
         self._voice = voice
         self._speakers: dict[str, Speaker] = {}
+        # Speech runs behind the text, so a finished answer can still be speaking.
+        self._speaking_after_text: dict[str, Speaker] = {}
         # The language each question was asked in, which the answer is spoken in.
         self._question_languages: dict[str, SpokenLanguage] = {}
         self._clocks: dict[str, TurnClock] = {}
@@ -139,8 +141,10 @@ class Session:
         elif isinstance(message, ProviderTest):
             self._in_background(self._test_provider(message))
         elif isinstance(message, UserText):
+            self._hush()
             await self._ask(message)
         elif isinstance(message, ListenStart):
+            self._hush()
             await self._listen_start(message)
         elif isinstance(message, ListenStop):
             if self._listening and self._listening.id == message.id:
@@ -236,6 +240,9 @@ class Session:
         await self._ask(UserText(id=listening.id, text=heard.text), language=heard.lang)
 
     async def _cancel(self, question_id: str) -> None:
+        if speaker := self._speaking_after_text.pop(question_id, None):
+            speaker.stop()
+            return
         if self._listening and self._listening.id == question_id:
             await self._end_listening("cancelled")
             return
@@ -249,6 +256,7 @@ class Session:
         for speaker in self._speakers.values():
             speaker.stop()
         self._speakers.clear()
+        self._hush()
         self._stop_following_voice()
         for task in self._tasks:
             task.cancel()
@@ -406,8 +414,21 @@ class Session:
         elif speaker:
             # Speech can run behind the text, so it ends on its own after the last sentence.
             speaker.finish()
+            self._speaking_after_text[response_id] = speaker
+            self._in_background(self._forget_when_quiet(response_id, speaker))
         if clock and reason == "complete":
             self._in_background(self._report_turn(response_id, clock, speaker))
+
+    async def _forget_when_quiet(self, response_id: str, speaker: Speaker) -> None:
+        await speaker.done()
+        if self._speaking_after_text.get(response_id) is speaker:
+            del self._speaking_after_text[response_id]
+
+    def _hush(self) -> None:
+        """A new question interrupts the teacher, even when the last answer's text is done."""
+        for speaker in self._speaking_after_text.values():
+            speaker.stop()
+        self._speaking_after_text.clear()
 
     async def _report_turn(
         self, question_id: str, clock: TurnClock, speaker: Speaker | None

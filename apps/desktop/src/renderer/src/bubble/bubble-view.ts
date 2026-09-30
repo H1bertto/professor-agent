@@ -10,8 +10,10 @@ const MAX_VISIBLE_MS = 60_000
  */
 const MS_PER_CHARACTER = 90
 
+/** Finished once the text is done and the teacher stopped speaking it. */
 export function isFinished(answer: Answer): boolean {
-  return answer.status !== 'waiting' && answer.status !== 'streaming'
+  const running = ['listening', 'waiting', 'streaming'].includes(answer.status)
+  return !running && answer.speech !== 'playing'
 }
 
 /** How long a finished answer stays on screen: time to read it, within limits. */
@@ -25,6 +27,8 @@ export function statusLine(
   answer: Answer
 ): { text: string; kind: 'thinking' | 'note' | 'error' } | null {
   switch (answer.status) {
+    case 'listening':
+      return { text: 'Listening...', kind: 'thinking' }
     case 'waiting':
       return { text: 'Thinking...', kind: 'thinking' }
     case 'cancelled':
