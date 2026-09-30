@@ -110,7 +110,7 @@ def render_sentence(
     kokoro: Any, pieces: list[Piece], english_voice: EnglishVoice
 ) -> list[SpokenPart]:
     """The audio for one sentence. Blocks while Kokoro runs, so call it from a thread."""
-    pieces = [piece for piece in pieces if piece.text.strip()]
+    pieces = _merge_blank_pieces(pieces)
     if not any(_HAS_WORDS.search(piece.text) for piece in pieces):
         return []
     if english_voice == "native":
@@ -132,6 +132,20 @@ def render_sentence(
     )
     samples, _ = kokoro.create(phonemes, voice=TEACHER_VOICE, is_phonemes=True)
     return [SpokenPart("".join(piece.text for piece in pieces).strip(), _main(pieces), samples)]
+
+
+def _merge_blank_pieces(pieces: list[Piece]) -> list[Piece]:
+    """Joins spaces to the piece before them, so "<en>since</en> <en>for</en>" keeps its space.
+
+    Each part's text is then a piece of the answer as the bubble shows it, for the subtitles.
+    """
+    merged: list[Piece] = []
+    for piece in pieces:
+        if piece.text.strip():
+            merged.append(piece)
+        elif merged:
+            merged[-1] = Piece(merged[-1].text + piece.text, merged[-1].lang)
+    return merged
 
 
 def _main(pieces: list[Piece]) -> SpokenLanguage:

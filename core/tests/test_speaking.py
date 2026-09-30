@@ -101,6 +101,27 @@ def test_the_native_voice_says_english_runs_in_an_english_voice() -> None:
     assert [(part.text, part.lang) for part in parts] == [("Usamos", "pt"), ("since", "en")]
 
 
+def test_a_space_between_two_english_spans_is_kept() -> None:
+    sentence = [
+        Piece("since", "en"),
+        Piece(" ", "pt"),
+        Piece("for", "en"),
+        Piece(" são diferentes.", "pt"),
+    ]
+
+    native = FakeKokoro()
+    parts = render_sentence(native, sentence, "native")
+    assert [(call["text"], call["voice"]) for call in native.calls] == [
+        ("since for", NATIVE_ENGLISH_VOICE),
+        ("são diferentes.", TEACHER_VOICE),
+    ]
+    assert [part.text for part in parts] == ["since for", "são diferentes."]
+
+    teacher = FakeKokoro()
+    parts = render_sentence(teacher, sentence, "teacher")
+    assert [part.text for part in parts] == ["since for são diferentes."]
+
+
 def test_sends_speech_as_short_16_bit_frames() -> None:
     frames = pcm_frames(np.array([0.5, -2.0] + [0.0] * FRAME_SAMPLES, dtype=np.float32))
     assert [len(frame) for frame in frames] == [FRAME_SAMPLES * 2, 4]
