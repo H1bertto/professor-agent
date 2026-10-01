@@ -16,8 +16,9 @@ from professor_core.protocol import MICROPHONE_SAMPLE_RATE, SpokenLanguage
 
 ListenEndReason = Literal["silence", "stopped", "too_long", "cancelled"]
 
-# A pause this long after speech ends the question.
-SILENCE_AFTER_SPEECH_S = 0.8
+# A pause this long after speech ends the question. Students often stop to think in the middle
+# of a sentence, and 0.8 s cut those sentences short. The hotkey still ends a question at once.
+SILENCE_AFTER_SPEECH_S = 1.5
 # Stop waiting when nothing that sounds like speech arrives for this long.
 NO_SPEECH_TIMEOUT_S = 8.0
 MAX_LISTEN_S = 30.0

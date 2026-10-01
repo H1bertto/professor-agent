@@ -18,7 +18,7 @@ Phase 3 lets the student ask out loud and hear the teacher answer. A hotkey star
 
 `Ctrl+Shift` with the key below Esc starts listening, and a second press ends it. That key types `'` on the Brazilian ABNT2 layout and `` ` `` on the US layout. Electron names keys by the US layout, so the accelerator is ``CommandOrControl+Shift+` ``. Pressing it while the teacher speaks interrupts the teacher. The tray menu has the same action.
 
-The core also ends the question by itself: after 0.8 seconds of silence once the student spoke, after 8 seconds without speech, or after 30 seconds. Pipecat's Silero voice detector decides what is speech.
+The core also ends the question by itself: after 1.5 seconds of silence once the student spoke, after 8 seconds without speech, or after 30 seconds. Pipecat's Silero voice detector decides what is speech. The silence was 0.8 seconds at first, which cut short the sentences of a student who stops to think.
 
 Listening runs outside the Pipecat pipeline. With a hotkey, the turn is already known, so the pipeline from phase 2 keeps only the text conversation, and the transcript enters it like a typed question. Phase 4 will revisit this, since turn detection there is the pipeline's job.
 
