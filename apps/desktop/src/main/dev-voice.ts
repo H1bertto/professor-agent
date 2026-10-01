@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { readFile, writeFile } from 'fs/promises'
-import type { SpeechCommand } from '../shared/api'
+import type { SpeechCommand, SpeechReport } from '../shared/api'
 import { MICROPHONE_SAMPLE_RATE, type VoiceConfig } from '../shared/core-protocol'
 
 // Development helpers to check the voice path without speaking. Packaged builds ignore them.
@@ -10,7 +10,8 @@ import { MICROPHONE_SAMPLE_RATE, type VoiceConfig } from '../shared/core-protoco
 // - PROFESSOR_DEV_MIC_FILE=<file.wav> plays a 16 kHz mono 16-bit WAV to the core in place of the
 //   microphone, then silence, so the core ends the question by itself.
 // - PROFESSOR_DEV_TALK=1 presses the talk hotkey once, when voice is ready.
-// - PROFESSOR_CAPTURE_SPEECH=<file.wav> saves each spoken answer as the overlay receives it.
+// - PROFESSOR_CAPTURE_SPEECH=<file.wav> saves each spoken answer as the overlay receives it, and
+//   logs when the overlay starts each part and finishes playing.
 
 export function devVoiceOverride(env = process.env): VoiceConfig | null {
   const voice = env.PROFESSOR_DEV_VOICE
@@ -75,6 +76,7 @@ export class SpeechRecorder {
   private chunks: Uint8Array[] = []
   private sampleRate = 24_000
   private saved = 0
+  private startedAt = 0
 
   constructor(private readonly target: string) {}
 
@@ -87,11 +89,20 @@ export class SpeechRecorder {
     if (command.type === 'start') {
       this.chunks = []
       this.sampleRate = command.sampleRate
+      this.startedAt = Date.now()
     } else if (command.type === 'audio') {
       this.chunks.push(command.pcm)
     } else if (command.type === 'end' || command.type === 'stop') {
       void this.save(command.type === 'end' ? 'complete' : 'stopped')
     }
+  }
+
+  /** What the overlay says it plays, to check the playback without listening. */
+  report(report: SpeechReport): void {
+    const after = ((Date.now() - this.startedAt) / 1000).toFixed(2)
+    if (report.type === 'segment')
+      console.log(`Overlay plays part ${report.index} after ${after} s`)
+    else console.log(`Overlay finished playing after ${after} s`)
   }
 
   private async save(reason: string): Promise<void> {

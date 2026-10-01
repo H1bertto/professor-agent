@@ -154,7 +154,10 @@ async function start(): Promise<void> {
   registerVoiceChannels(overlay, {
     microphoneAudio: (pcm) => tutor.hear(pcm),
     microphoneFailed: (message) => tutor.microphoneFailed(message),
-    speechReport: (report) => tutor.speechReport(report)
+    speechReport: (report) => {
+      speechRecorder?.report(report)
+      tutor.speechReport(report)
+    }
   })
   const talk = (): void => {
     // The bubble shows only beside a visible avatar.
