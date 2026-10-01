@@ -80,6 +80,7 @@ In development builds, `PROFESSOR_DEV_VOICE`, `PROFESSOR_DEV_MIC_FILE`, `PROFESS
 
 ## Consequences
 
+- With more than one keyboard layout, Windows switches layouts with `Ctrl+Shift` on its own. In the other layout the key below Esc can send another key code, and the hotkey stops working until the layout comes back. This happened in the first manual test, with the Brazilian and the Portuguese layouts. The README tells how to avoid it, and a hotkey the student can change would remove it.
 - Voice needs an NVIDIA graphics card for now. Without one, the settings window says so. A CPU fallback is planned for phase 6.
 - English words in the first question of a session can come out wrong, until the teacher's answers give Whisper hints.
 - Echo does not matter yet, because the hotkey silences the teacher before it listens. Conversation mode in phase 4 needs echo cancellation that holds up with speakers, or headphones.
