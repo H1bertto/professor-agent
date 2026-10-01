@@ -1,5 +1,5 @@
 import type { AnswerView } from '../../../shared/api'
-import { hideDelayMs, isFinished, statusLine } from './bubble-view'
+import { hideDelayMs, isFinished, spokenRange, statusLine, subtitleRuns } from './bubble-view'
 
 const api = window.professor.bubble
 
@@ -30,21 +30,30 @@ function scheduleHide(): void {
 
 function render({ teacherName, answer }: AnswerView): void {
   teacher.textContent = teacherName
+  // A spoken question has no text until the core has heard it.
+  question.hidden = !answer.question
   question.textContent = answer.question
   question.title = answer.question
 
   const followingEnd = text.scrollHeight - text.scrollTop - text.clientHeight < 8
+  let spokenSpan: HTMLSpanElement | null = null
   // Text only, never HTML: the answer comes from an AI provider.
   text.replaceChildren(
-    ...answer.segments.map((segment) => {
-      if (!segment.lang) return document.createTextNode(segment.text)
+    ...subtitleRuns(answer.segments, spokenRange(answer)).map((run) => {
+      if (!run.lang && !run.spoken) return document.createTextNode(run.text)
       const span = document.createElement('span')
-      span.lang = segment.lang
-      span.textContent = segment.text
+      if (run.lang) span.lang = run.lang
+      if (run.spoken) {
+        span.className = 'spoken'
+        spokenSpan ??= span
+      }
+      span.textContent = run.text
       return span
     })
   )
-  if (followingEnd) text.scrollTop = text.scrollHeight
+  // The subtitles follow the teacher's voice, unless the student is reading with the mouse.
+  if (spokenSpan && !hovered) (spokenSpan as HTMLSpanElement).scrollIntoView({ block: 'nearest' })
+  else if (followingEnd) text.scrollTop = text.scrollHeight
 
   const line = statusLine(answer)
   status.hidden = line === null

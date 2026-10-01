@@ -1,12 +1,14 @@
 """Creates LLM services and lists models for the AI providers a student can connect."""
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
 import anthropic
 import openai
+from loguru import logger
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.llm_service import LLMService
 from pipecat.services.openai.llm import OpenAILLMService
@@ -52,8 +54,73 @@ class TutorAnthropicLLMService(AnthropicLLMService):
         await self._client.close()
 
 
+@dataclass
+class AnswerEnding:
+    """How the provider ended one streamed answer, which explains an empty one without its text."""
+
+    text_chars: int = 0
+    finish_reason: str | None = None
+    completion_tokens: int | None = None
+    reasoning_tokens: int | None = None
+
+    def see(self, chunk: Any) -> None:
+        if usage := getattr(chunk, "usage", None):
+            self.completion_tokens = usage.completion_tokens
+            details = usage.completion_tokens_details
+            self.reasoning_tokens = details.reasoning_tokens if details else None
+        for choice in getattr(chunk, "choices", None) or []:
+            if choice.delta and choice.delta.content:
+                self.text_chars += len(choice.delta.content)
+            if choice.finish_reason:
+                self.finish_reason = choice.finish_reason
+
+    def describe(self) -> str:
+        return (
+            f"finish reason {self.finish_reason}, {self.completion_tokens} completion tokens, "
+            f"{self.reasoning_tokens} of them for reasoning"
+        )
+
+
+class _WatchedStream:
+    """Passes the chunks of an answer on unchanged, then tells how the answer ended."""
+
+    def __init__(self, stream: Any, on_end: Callable[[AnswerEnding], None]) -> None:
+        self._stream = stream
+        self._on_end = on_end
+
+    def __aiter__(self) -> AsyncIterator[Any]:
+        return self._chunks()
+
+    async def _chunks(self) -> AsyncIterator[Any]:
+        ending = AnswerEnding()
+        chunks = self._stream.__aiter__()
+        try:
+            async for chunk in chunks:
+                ending.see(chunk)
+                yield chunk
+            self._on_end(ending)
+        finally:
+            # Pipecat closes the iterator it holds so the HTTP stream's own generators close too.
+            # This one sits in between, so it passes that on.
+            if hasattr(chunks, "aclose"):
+                await chunks.aclose()
+
+    async def close(self) -> None:
+        await self._stream.close()
+
+
+def _report_empty_answer(ending: AnswerEnding) -> None:
+    if ending.text_chars == 0:
+        logger.warning(f"The provider ended an answer without text: {ending.describe()}")
+
+
 class TutorOpenAILLMService(OpenAILLMService):
     """Pipecat's OpenAI service, with request timeouts and an HTTP client that gets closed."""
+
+    async def get_chat_completions(self, context: Any) -> Any:
+        # Some answers come back without a word. The log then tells why, without the text.
+        stream = await super().get_chat_completions(context)
+        return _WatchedStream(stream, _report_empty_answer)
 
     def create_client(
         self,

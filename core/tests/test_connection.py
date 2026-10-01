@@ -8,9 +8,16 @@ from starlette.websockets import WebSocketDisconnect
 
 from professor_core.app import create_app
 from professor_core.connection import token_matches
+from professor_core.protocol import AudioKind, encode_audio
 
-HELLO = {"type": "hello", "protocol": 1, "client": "test", "token": None}
+HELLO = {"type": "hello", "protocol": 2, "client": "test", "token": None}
 PERSONA = {"name": "Professor", "instructions": ""}
+VOICE_OFF = {
+    "enabled": False,
+    "speakAnswers": False,
+    "spokenLanguage": "auto",
+    "englishVoice": "teacher",
+}
 
 
 @pytest.fixture
@@ -102,7 +109,14 @@ def test_a_question_before_configuring_a_provider(client: TestClient) -> None:
 
 def test_a_full_answer(client: TestClient, fake_provider: FakeProvider) -> None:
     socket, ws = open_session(client)
-    ws.send_json({"type": "configure", "provider": provider(fake_provider), "persona": PERSONA})
+    ws.send_json(
+        {
+            "type": "configure",
+            "provider": provider(fake_provider),
+            "persona": PERSONA,
+            "voice": VOICE_OFF,
+        }
+    )
     ws.send_json({"type": "user.text", "id": "q1", "text": "since vs for?"})
     messages = receive_answer(ws, "q1")
 
@@ -121,7 +135,12 @@ def test_a_full_answer(client: TestClient, fake_provider: FakeProvider) -> None:
 def test_provider_errors_reach_the_desktop(client: TestClient, fake_provider: FakeProvider) -> None:
     socket, ws = open_session(client)
     ws.send_json(
-        {"type": "configure", "provider": provider(fake_provider, BAD_KEY), "persona": PERSONA}
+        {
+            "type": "configure",
+            "provider": provider(fake_provider, BAD_KEY),
+            "persona": PERSONA,
+            "voice": VOICE_OFF,
+        }
     )
     ws.send_json({"type": "user.text", "id": "q1", "text": "hi"})
     types = [(m["type"], m.get("code")) for m in receive_answer(ws, "q1")]
@@ -142,4 +161,45 @@ def test_testing_a_provider(client: TestClient, fake_provider: FakeProvider) -> 
     )
     result = ws.receive_json()
     assert (result["ok"], result["code"]) == (False, "invalid_key")
+    socket.__exit__(None, None, None)
+
+
+def test_refuses_an_older_protocol() -> None:
+    with TestClient(create_app()) as client, client.websocket_connect("/ws") as ws:
+        ws.send_json({**HELLO, "protocol": 1})
+        assert ws.receive_json()["code"] == "bad_request"
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_text()
+
+
+def test_answers_bad_audio_frames_with_an_error(client: TestClient) -> None:
+    socket, ws = open_session(client)
+    for frame in (b"", b"\x09\x00\x00", encode_audio(AudioKind.MICROPHONE, b"\x00")):
+        ws.send_bytes(frame)
+        assert ws.receive_json()["code"] == "bad_request"
+    # Speech frames only go from the core to the desktop.
+    ws.send_bytes(encode_audio(AudioKind.SPEECH, b"\x00\x00"))
+    assert ws.receive_json()["code"] == "bad_request"
+    socket.__exit__(None, None, None)
+
+
+def test_drops_microphone_audio_when_nothing_listens(client: TestClient) -> None:
+    socket, ws = open_session(client)
+    ws.send_bytes(encode_audio(AudioKind.MICROPHONE, b"\x00\x00" * 320))
+    # The session is still fine: the next message gets its normal answer.
+    ws.send_json({"type": "user.text", "id": "q1", "text": "hi"})
+    assert [m["type"] for m in receive_answer(ws, "q1")] == [
+        "response.start",
+        "error",
+        "response.end",
+    ]
+    socket.__exit__(None, None, None)
+
+
+def test_a_spoken_question_needs_voice(client: TestClient) -> None:
+    socket, ws = open_session(client)
+    ws.send_json({"type": "listen.start", "id": "v1"})
+    error = ws.receive_json()
+    assert (error["id"], error["code"]) == ("v1", "voice_unavailable")
+    assert ws.receive_json() == {"type": "listen.end", "id": "v1", "reason": "cancelled"}
     socket.__exit__(None, None, None)

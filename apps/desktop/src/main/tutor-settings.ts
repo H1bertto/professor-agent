@@ -46,7 +46,7 @@ export class TutorSettings {
   }
 
   view(): SettingsView {
-    const { provider, persona } = this.store.get()
+    const { provider, persona, voice } = this.store.get()
     return {
       provider: provider && {
         preset: provider.preset,
@@ -55,26 +55,28 @@ export class TutorSettings {
         keyHint: this.apiKey ? keyHint(this.apiKey) : null
       },
       persona,
+      voice,
       keyStorageAvailable: this.vault.available
     }
   }
 
   /** The provider stays `null` until a model and a key that can be decrypted are saved. */
   configureMessage(): ConfigureMessage {
-    const { provider, persona } = this.store.get()
+    const { provider, persona, voice } = this.store.get()
     const preset = provider && findPreset(provider.preset)
     const ready = provider && preset && this.apiKey && provider.model
     return {
       type: 'configure',
       provider: ready ? providerConfig(preset, provider, this.apiKey as string) : null,
-      persona
+      persona,
+      voice
     }
   }
 
   save(raw: unknown): SaveResult {
     const form = checkSettingsForm(raw)
     if (!form.ok) return form
-    const { provider, persona } = form.value
+    const { provider, persona, voice = this.store.get().voice } = form.value
 
     let stored: StoredProvider | null = null
     let apiKey: string | null = null
@@ -98,7 +100,7 @@ export class TutorSettings {
       }
     }
 
-    this.store.update({ provider: stored, persona })
+    this.store.update({ provider: stored, persona, voice })
     this.apiKey = apiKey
     this.core.send(this.configureMessage())
     return { ok: true, settings: this.view() }

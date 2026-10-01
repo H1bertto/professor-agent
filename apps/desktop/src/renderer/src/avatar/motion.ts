@@ -60,6 +60,15 @@ export function mix(from: number, to: number, amount: number): number {
 
 /** Where a thinking avatar looks: up and to the side, in the same units as LookTarget. */
 export const THINKING_GAZE = { x: 0.5, y: -0.7 }
+/** Where a listening avatar looks: at the student, straight ahead. */
+export const LISTENING_GAZE = { x: 0, y: 0 }
+/** How much a listening avatar turns to the student instead of following the cursor. */
+export const LISTENING_FOCUS = 0.8
+
+/** How open the mouth is for speech this loud, from its root mean square. Quiet keeps it shut. */
+export function mouthFromLevel(level: number): number {
+  return clamp((level - 0.01) * 8, 0, 1)
+}
 
 /** A mouth movement that looks like speech: quick syllables inside slower phrases. */
 export function talkingMouth(timeSeconds: number): number {

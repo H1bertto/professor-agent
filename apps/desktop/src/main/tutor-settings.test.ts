@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { ClientMessage } from '../shared/core-protocol'
 import { KeyVault } from './key-vault'
+import { DEFAULT_VOICE } from './settings'
 import { SettingsStore } from './settings-store'
 import { FakeCoreConnection, fakeCipher } from './test-helpers'
 import { CORE_OFFLINE_MESSAGE, TutorSettings } from './tutor-settings'
@@ -39,12 +40,14 @@ describe('TutorSettings', () => {
     expect(tutor().view()).toEqual({
       provider: null,
       persona: PERSONA,
+      voice: DEFAULT_VOICE,
       keyStorageAvailable: true
     })
     expect(tutor().configureMessage()).toEqual({
       type: 'configure',
       provider: null,
-      persona: PERSONA
+      persona: PERSONA,
+      voice: DEFAULT_VOICE
     })
   })
 
@@ -65,13 +68,15 @@ describe('TutorSettings', () => {
           keyHint: '...9876'
         },
         persona: { name: 'Ana', instructions: '' },
+        voice: DEFAULT_VOICE,
         keyStorageAvailable: true
       }
     })
     expect(lastConfigure()).toEqual({
       type: 'configure',
       provider: { kind: 'anthropic', baseUrl: null, model: 'claude-opus-5', apiKey: KEY },
-      persona: { name: 'Ana', instructions: '' }
+      persona: { name: 'Ana', instructions: '' },
+      voice: DEFAULT_VOICE
     })
 
     await store.flush()
@@ -141,6 +146,23 @@ describe('TutorSettings', () => {
       message: 'Choose a model.'
     })
     expect(core.sent).toEqual([])
+  })
+
+  it('saves the voice settings and sends them to the core', () => {
+    const settings = tutor()
+    const voice = { ...DEFAULT_VOICE, enabled: true, englishVoice: 'native' as const }
+    expect(settings.save({ provider: null, persona: PERSONA, voice }).ok).toBe(true)
+
+    expect(settings.view().voice).toEqual(voice)
+    expect(lastConfigure().voice).toEqual(voice)
+
+    // A form without voice settings, such as removing the provider, keeps them.
+    settings.save({ provider: null, persona: PERSONA })
+    expect(lastConfigure().voice).toEqual(voice)
+    expect(settings.save({ provider: null, persona: PERSONA, voice: { enabled: 'yes' } })).toEqual({
+      ok: false,
+      message: 'The voice settings could not be read.'
+    })
   })
 
   it('leaves the provider out when the saved key cannot be opened', async () => {

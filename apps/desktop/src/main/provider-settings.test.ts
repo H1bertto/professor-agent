@@ -92,6 +92,26 @@ describe('checkSettingsForm', () => {
     })
   })
 
+  it('checks the voice settings when the form has them', () => {
+    const voice = {
+      enabled: true,
+      speakAnswers: true,
+      spokenLanguage: 'auto',
+      englishVoice: 'teacher'
+    }
+    expect(checkSettingsForm({ provider: null, persona: PERSONA, voice })).toEqual({
+      ok: true,
+      value: { provider: null, persona: PERSONA, voice }
+    })
+    for (const invalid of [
+      null,
+      { ...voice, spokenLanguage: 'es' },
+      { ...voice, speakAnswers: 1 }
+    ]) {
+      expect(checkSettingsForm({ provider: null, persona: PERSONA, voice: invalid }).ok).toBe(false)
+    }
+  })
+
   it('checks the persona and the provider', () => {
     expect(checkSettingsForm({ provider: ANTHROPIC, persona: { name: '' } }).ok).toBe(false)
     expect(checkSettingsForm({ provider: { ...ANTHROPIC, model: '' }, persona: PERSONA }).ok).toBe(

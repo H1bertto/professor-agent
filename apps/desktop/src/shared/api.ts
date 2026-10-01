@@ -1,7 +1,7 @@
 // Types and channel names shared by the main, preload, and renderer processes.
 
 import type { AvatarConfig, AvatarState, Emotion, LookTarget } from './avatar'
-import type { PersonaConfig, Segment } from './core-protocol'
+import type { PersonaConfig, Segment, VoiceConfig, VoiceState } from './core-protocol'
 import type { ProviderPresetId } from './providers'
 
 export type CoreConnectionStatus = 'connecting' | 'online' | 'offline'
@@ -10,6 +10,15 @@ export interface CoreStatus {
   connection: CoreConnectionStatus
   /** The core version, known once the connection is open. */
   version: string | null
+}
+
+/** Where the speech models are, as the core last reported. */
+export interface VoiceStatusView {
+  state: VoiceState
+  /** The download progress, from 0 to 1, while downloading. */
+  progress: number | null
+  /** Why voice is unavailable, in words for the student. */
+  message: string | null
 }
 
 /** Where the mouse cursor is, sent to the overlay while it moves. */
@@ -28,17 +37,38 @@ export interface AvatarPose {
   talking: boolean
 }
 
-export type AnswerStatus = 'waiting' | 'streaming' | 'complete' | 'cancelled' | 'error'
+export type AnswerStatus =
+  'listening' | 'waiting' | 'streaming' | 'complete' | 'cancelled' | 'error'
 
 /** One question and the teacher's answer so far. */
 export interface Answer {
   id: string
+  /** Empty while the student is still speaking. */
   question: string
   segments: Segment[]
   status: AnswerStatus
   /** Why the answer failed, in words for the student. */
   error: string | null
+  /** `playing` while the answer is heard, which can last after the text is complete. */
+  speech: 'none' | 'playing' | 'done'
+  /** The parts of the answer as the teacher says them, for subtitles. */
+  speechParts: string[]
+  /** The part the student hears now, or `null`. */
+  speakingIndex: number | null
 }
+
+/** What the main process asks the overlay to play. */
+export type SpeechCommand =
+  | { type: 'start'; sampleRate: number }
+  | { type: 'segment'; index: number }
+  | { type: 'audio'; pcm: Uint8Array }
+  /** No more audio is coming. The overlay reports `finished` once the last of it has played. */
+  | { type: 'end' }
+  /** Stop at once and drop what is queued, for example when the student interrupts. */
+  | { type: 'stop' }
+
+/** What the overlay tells the main process about the speech it plays. */
+export type SpeechReport = { type: 'segment'; index: number } | { type: 'finished' }
 
 /** What the answer bubble shows. */
 export interface AnswerView {
@@ -61,6 +91,7 @@ export interface ProviderView {
 export interface SettingsView {
   provider: ProviderView | null
   persona: PersonaConfig
+  voice: VoiceConfig
   /** Whether the system can encrypt API keys. Without it, keys cannot be saved. */
   keyStorageAvailable: boolean
 }
@@ -79,6 +110,8 @@ export interface SettingsForm {
   /** `null` removes the provider and its key. */
   provider: ProviderForm | null
   persona: PersonaConfig
+  /** Leave it out to keep the saved voice settings. */
+  voice?: VoiceConfig
 }
 
 export type SaveResult = { ok: true; settings: SettingsView } | { ok: false; message: string }
@@ -93,6 +126,8 @@ export interface ProviderTestResult {
 export const IpcChannel = {
   coreStatus: 'core:status',
   coreStatusChanged: 'core:status-changed',
+  voiceStatus: 'voice:status',
+  voiceStatusChanged: 'voice:status-changed',
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
   settingsTestProvider: 'settings:test-provider',
@@ -106,6 +141,11 @@ export const IpcChannel = {
   overlayDragEnd: 'overlay:drag-end',
   overlayResize: 'overlay:resize',
   overlayClick: 'overlay:click',
+  overlayMicrophone: 'overlay:microphone',
+  overlayMicrophoneAudio: 'overlay:microphone-audio',
+  overlayMicrophoneFailed: 'overlay:microphone-failed',
+  overlaySpeech: 'overlay:speech',
+  overlaySpeechReport: 'overlay:speech-report',
   askOpened: 'ask:opened',
   askSubmit: 'ask:submit',
   askClose: 'ask:close',
@@ -133,6 +173,14 @@ export interface OverlayApi {
   resize(steps: number): void
   /** The student clicked the avatar without dragging it, which opens the question box. */
   click(): void
+  /** `true` opens the microphone for a spoken question, and `false` closes it. */
+  onMicrophone(listener: (on: boolean) => void): () => void
+  /** 16-bit mono PCM at 16 kHz from the microphone. */
+  sendMicrophoneAudio(pcm: Uint8Array): void
+  /** The microphone could not open, for example because access was denied. */
+  microphoneFailed(message: string): void
+  onSpeech(listener: (command: SpeechCommand) => void): () => void
+  reportSpeech(report: SpeechReport): void
 }
 
 /** Calls available to the question box. */
@@ -161,6 +209,8 @@ export interface SettingsApi {
   testProvider(provider: ProviderForm): Promise<ProviderTestResult>
   getCoreStatus(): Promise<CoreStatus>
   onCoreStatus(listener: (status: CoreStatus) => void): () => void
+  getVoiceStatus(): Promise<VoiceStatusView>
+  onVoiceStatus(listener: (status: VoiceStatusView) => void): () => void
 }
 
 /** API that the preload script exposes to the renderer as `window.professor`. */

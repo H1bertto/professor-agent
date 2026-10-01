@@ -25,6 +25,9 @@ SLOW_MODEL = "slow-model"
 HANG_QUESTION = "please hang"
 HANG_S = 30.0
 MISSING_MODEL = "missing-model"
+# This model answers with an emotion tag and not a single word, like a provider that ends an
+# answer empty.
+EMPTY_MODEL = "empty-model"
 BAD_KEY = "bad-key"
 NO_CREDIT_KEY = "no-credit"
 BUSY_KEY = "busy"
@@ -230,6 +233,9 @@ class FakeProvider:
 async def _words(model: str, *, hang: bool = False) -> AsyncIterator[str]:
     if hang:
         await asyncio.sleep(HANG_S)
+    if model == EMPTY_MODEL:
+        yield "[happy] "
+        return
     slow = model == SLOW_MODEL
     text = " ".join([REPLY] * (4 if slow else 1))
     words = text.split(" ")

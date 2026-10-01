@@ -26,11 +26,11 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 - [x] Streaming answer bubble and avatar expressions ([ADR 0003](adr/0003-text-chat.md))
 
 ### Phase 3: Voice with a hotkey
-- [ ] Microphone capture with echo cancellation, streamed as 16 kHz PCM
-- [ ] Voice activity detection, speech-to-text, sentence splitting, text-to-speech
-- [ ] Portuguese and English: language set by the lesson (detection only in free talk), voice switched per language span
-- [ ] Lip sync and subtitles
-- [ ] Latency measured per stage
+- [x] Microphone capture with echo cancellation, streamed as 16 kHz PCM
+- [x] Voice activity detection, speech-to-text, sentence splitting, text-to-speech
+- [x] Portuguese and English: the student sets the language or lets the core detect it between the two (lessons will set it in phase 5), and English spans are spoken in the teacher's voice or a native English voice
+- [x] Lip sync and subtitles
+- [x] Latency measured per stage ([ADR 0004](adr/0004-voice-with-a-hotkey.md))
 
 ### Phase 4: Conversation mode
 - [ ] Always-on microphone with turn detection, headphones first

@@ -1,6 +1,6 @@
 # Professor Agent desktop
 
-The Electron app of Professor Agent. It shows the avatar on top of your other apps, lets you ask the teacher questions, and will own the microphone and audio playback.
+The Electron app of Professor Agent. It shows the avatar on top of your other apps, lets you ask the teacher questions by text or by voice, and owns the microphone and the speakers.
 
 ## What works now
 
@@ -9,10 +9,11 @@ The Electron app of Professor Agent. It shows the avatar on top of your other ap
 - Two built-in avatars: Seed-san (3D, VRM) and Chalk (2D, PNGTuber). You can import your own, see [docs/avatars.md](../../docs/avatars.md).
 - The avatar breathes, blinks, and follows the mouse cursor with its eyes and head.
 - **Text chat with your AI provider.** Click the avatar (without dragging it) or press `Ctrl+Alt+Space` to ask a question. The answer streams into a bubble beside the avatar, which looks up while it thinks, moves its mouth while the text streams, and shows the teacher's emotion. The bubble has Stop, Pin, and Close, and hides by itself a while after the answer ends.
-- **Settings** (tray menu > **Settings and credits**): pick a provider (Anthropic, OpenAI, OpenRouter, Groq, Google Gemini, or any OpenAI-compatible API), paste your API key, test the connection, choose a model, and name the teacher.
-- The tray icon menu: ask a question, show or hide the avatar (also `Ctrl+Alt+P`), switch or import avatars, try expressions and talking, reset the position, and open the settings.
+- **Voice.** Turn it on in the settings, then press `Ctrl+Shift` with the key below Esc (`'` on a Brazilian keyboard) and ask out loud. Press it again when you finish, or just stop talking. The teacher answers out loud while the text streams, the bubble highlights the sentence being said, and the avatar's mouth follows the voice. Speech runs on this computer and needs the core's voice extra, see [`core/README.md`](../../core/README.md#voice). If Windows has more than one keyboard layout, `Ctrl+Shift` on its own switches between them, and in the other layout the hotkey may not work. Remove the layout you do not use, or turn off that shortcut in the Windows keyboard settings (Input language hot keys).
+- **Settings** (tray menu > **Settings and credits**): pick a provider (Anthropic, OpenAI, OpenRouter, Groq, Google Gemini, or any OpenAI-compatible API), paste your API key, test the connection, choose a model, name the teacher, and set up voice.
+- The tray icon menu: ask a question, talk to the teacher, show or hide the avatar (also `Ctrl+Alt+P`), switch or import avatars, try expressions and talking, reset the position, and open the settings.
 
-The design is explained in [ADR 0002](../../docs/adr/0002-avatar-overlay.md) (overlay) and [ADR 0003](../../docs/adr/0003-text-chat.md) (text chat).
+The design is explained in [ADR 0002](../../docs/adr/0002-avatar-overlay.md) (overlay), [ADR 0003](../../docs/adr/0003-text-chat.md) (text chat), and [ADR 0004](../../docs/adr/0004-voice-with-a-hotkey.md) (voice).
 
 ## Run
 
@@ -41,6 +42,10 @@ These environment variables only work outside the packaged app:
 | `PROFESSOR_CAPTURE_BUBBLE=<file.png>`         | Saves what the answer bubble draws                                |
 | `PROFESSOR_CAPTURE_DELAY_MS=<ms>`             | Waits this long after the avatar loads before the captures        |
 | `PROFESSOR_CAPTURE_EXIT=1`                    | Quits after the captures                                          |
+| `PROFESSOR_DEV_VOICE=teacher` or `native`     | Turns voice on, with that English voice, without saving it        |
+| `PROFESSOR_DEV_MIC_FILE=<file.wav>`           | Plays a 16 kHz mono WAV in place of the microphone                |
+| `PROFESSOR_DEV_TALK=1`                        | Presses the talk hotkey once voice is ready                       |
+| `PROFESSOR_CAPTURE_SPEECH=<file.wav>`         | Saves the spoken answer and logs what the overlay played          |
 | `PROFESSOR_CORE_PORT`, `PROFESSOR_CORE_TOKEN` | Must match the core, see [`core/README.md`](../../core/README.md) |
 
 To try the chat without a real provider or credit, run the fake provider of the core tests and point the app at it:
@@ -56,6 +61,8 @@ npm run dev
 ```
 
 The model `slow-model` streams a longer answer slowly, to watch the streaming.
+
+With the core's voice extra, the same fake provider checks the whole voice path without a microphone: set `PROFESSOR_DEV_VOICE=teacher`, `PROFESSOR_DEV_MIC_FILE` to a recorded question, `PROFESSOR_DEV_TALK=1`, and `PROFESSOR_CAPTURE_SPEECH` to the WAV file to save.
 
 `npm run generate:chalk` redraws the Chalk avatar from [`scripts/generate-chalk-avatar.mts`](scripts/generate-chalk-avatar.mts).
 

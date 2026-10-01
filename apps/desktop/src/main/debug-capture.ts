@@ -86,7 +86,9 @@ export function scheduleOverlayCapture(
         await writeFile(pageTarget, image.toPNG())
       }
       if (screenTarget) await captureScreenUnderWindow(window, screenTarget)
-      if (bubbleTarget) {
+      // A hidden window draws nothing, so capturing it would wait forever.
+      if (bubbleTarget && !bubble.isVisible()) console.log('Bubble hidden, so not captured')
+      else if (bubbleTarget) {
         const image = await bubble.webContents.capturePage()
         await writeFile(bubbleTarget, image.toPNG())
         console.log(

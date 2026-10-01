@@ -5,6 +5,11 @@ import type { AvatarOption } from './avatar-library'
 
 export const TOGGLE_OVERLAY_SHORTCUT = 'CommandOrControl+Alt+P'
 export const ASK_SHORTCUT = 'CommandOrControl+Alt+Space'
+/**
+ * The key below Esc, which types ' on the Brazilian ABNT2 layout and ` on the US layout.
+ * Electron names keys by the US layout.
+ */
+export const TALK_SHORTCUT = 'CommandOrControl+Shift+`'
 
 export interface TrayState {
   overlayVisible: boolean
@@ -17,6 +22,8 @@ export interface TrayState {
 export interface TrayActions {
   state(): TrayState
   ask(): void
+  /** Starts a spoken question, or ends the one being heard. */
+  talk(): void
   toggleOverlay(): void
   selectAvatar(choice: AvatarChoice): void
   importVrm(): void
@@ -60,6 +67,7 @@ function menu(actions: TrayActions, refresh: () => void): MenuItemConstructorOpt
 
   return [
     { label: 'Ask a question...', accelerator: ASK_SHORTCUT, click: actions.ask },
+    { label: 'Talk to the teacher', accelerator: TALK_SHORTCUT, click: actions.talk },
     {
       label: state.overlayVisible ? 'Hide avatar' : 'Show avatar',
       accelerator: TOGGLE_OVERLAY_SHORTCUT,

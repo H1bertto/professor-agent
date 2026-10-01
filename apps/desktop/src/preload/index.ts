@@ -15,7 +15,9 @@ const api: ProfessorApi = {
     save: (form) => ipcRenderer.invoke(IpcChannel.settingsSave, form),
     testProvider: (provider) => ipcRenderer.invoke(IpcChannel.settingsTestProvider, provider),
     getCoreStatus: () => ipcRenderer.invoke(IpcChannel.coreStatus),
-    onCoreStatus: (listener) => subscribe(IpcChannel.coreStatusChanged, listener)
+    onCoreStatus: (listener) => subscribe(IpcChannel.coreStatusChanged, listener),
+    getVoiceStatus: () => ipcRenderer.invoke(IpcChannel.voiceStatus),
+    onVoiceStatus: (listener) => subscribe(IpcChannel.voiceStatusChanged, listener)
   },
   overlay: {
     getAvatar: () => ipcRenderer.invoke(IpcChannel.avatarGet),
@@ -28,7 +30,12 @@ const api: ProfessorApi = {
     startDrag: () => ipcRenderer.send(IpcChannel.overlayDragStart),
     endDrag: () => ipcRenderer.send(IpcChannel.overlayDragEnd),
     resize: (steps) => ipcRenderer.send(IpcChannel.overlayResize, steps),
-    click: () => ipcRenderer.send(IpcChannel.overlayClick)
+    click: () => ipcRenderer.send(IpcChannel.overlayClick),
+    onMicrophone: (listener) => subscribe(IpcChannel.overlayMicrophone, listener),
+    sendMicrophoneAudio: (pcm) => ipcRenderer.send(IpcChannel.overlayMicrophoneAudio, pcm),
+    microphoneFailed: (message) => ipcRenderer.send(IpcChannel.overlayMicrophoneFailed, message),
+    onSpeech: (listener) => subscribe(IpcChannel.overlaySpeech, listener),
+    reportSpeech: (report) => ipcRenderer.send(IpcChannel.overlaySpeechReport, report)
   },
   ask: {
     ask: (text) => ipcRenderer.invoke(IpcChannel.askSubmit, text),

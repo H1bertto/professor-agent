@@ -1,6 +1,9 @@
-import WebSocket from 'ws'
+import WebSocket, { type RawData } from 'ws'
 import type { CoreConnectionStatus } from '../shared/api'
 import {
+  AudioKind,
+  decodeAudioFrame,
+  encodeAudioFrame,
   parseCoreMessage,
   PROTOCOL_VERSION,
   type ClientMessage,
@@ -49,6 +52,7 @@ export class CoreClient {
   private stopped = true
   private lastConfigure: ConfigureMessage | null = null
   private readonly messageListeners = new Set<(message: CoreMessage) => void>()
+  private readonly audioListeners = new Set<(pcm: Uint8Array) => void>()
   private readonly statusListeners = new Set<(status: CoreConnectionStatus) => void>()
 
   constructor(private readonly options: CoreClientOptions) {}
@@ -88,9 +92,22 @@ export class CoreClient {
     return true
   }
 
+  /** Sends microphone audio, 16-bit mono PCM at 16 kHz. Returns `false` when offline. */
+  sendAudio(pcm: Uint8Array): boolean {
+    if (this.status !== 'online' || !this.socket) return false
+    this.socket.send(encodeAudioFrame(AudioKind.microphone, pcm), { binary: true })
+    return true
+  }
+
   onMessage(listener: (message: CoreMessage) => void): () => void {
     this.messageListeners.add(listener)
     return () => this.messageListeners.delete(listener)
+  }
+
+  /** Speech from the core, as 16-bit mono PCM at the rate of the last `speech.start`. */
+  onAudio(listener: (pcm: Uint8Array) => void): () => void {
+    this.audioListeners.add(listener)
+    return () => this.audioListeners.delete(listener)
   }
 
   onStatus(listener: (status: CoreConnectionStatus) => void): () => void {
@@ -111,10 +128,28 @@ export class CoreClient {
       }
       socket.send(JSON.stringify(hello))
     })
-    socket.on('message', (data) => this.receive(socket, data.toString()))
+    socket.on('message', (data, isBinary) => {
+      if (isBinary) this.receiveAudio(socket, data)
+      else this.receive(socket, data.toString())
+    })
     socket.on('close', () => this.handleClose(socket))
     // A failed connection emits 'error' and then 'close', and 'close' schedules the retry.
     socket.on('error', () => undefined)
+  }
+
+  private receiveAudio(socket: WebSocket, data: RawData): void {
+    if (this.socket !== socket || this.status !== 'online') return
+    const bytes = Array.isArray(data)
+      ? Buffer.concat(data)
+      : data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : data
+    const frame = decodeAudioFrame(bytes)
+    // Only speech comes this way. Anything else is dropped.
+    if (!frame || frame.kind !== AudioKind.speech) return
+    // A copy of just this frame, since ws may share one buffer between messages.
+    const pcm = new Uint8Array(frame.pcm)
+    for (const listener of this.audioListeners) listener(pcm)
   }
 
   private receive(socket: WebSocket, raw: string): void {

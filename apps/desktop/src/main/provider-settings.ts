@@ -2,7 +2,7 @@
 // page, but anything that crosses IPC is treated as untrusted.
 
 import type { ProviderForm, SettingsForm } from '../shared/api'
-import type { PersonaConfig } from '../shared/core-protocol'
+import { parseVoiceConfig, type PersonaConfig, type VoiceConfig } from '../shared/core-protocol'
 import { findPreset, isSafeBaseUrl, LIMITS } from '../shared/providers'
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; message: string }
@@ -56,14 +56,29 @@ export function checkPersona(raw: unknown): Checked<PersonaConfig> {
   return { ok: true, value: { name, instructions } }
 }
 
+export function checkVoice(raw: unknown): Checked<VoiceConfig> {
+  const voice = parseVoiceConfig(raw)
+  return voice ? { ok: true, value: voice } : fail('The voice settings could not be read.')
+}
+
 export function checkSettingsForm(raw: unknown): Checked<SettingsForm> {
   if (!isRecord(raw)) return fail('The settings could not be read.')
   const persona = checkPersona(raw.persona)
   if (!persona.ok) return persona
-  if (raw.provider === null) return { ok: true, value: { provider: null, persona: persona.value } }
+  // A form without voice settings keeps the saved ones.
+  let voice: VoiceConfig | undefined
+  if (raw.voice !== undefined) {
+    const checked = checkVoice(raw.voice)
+    if (!checked.ok) return checked
+    voice = checked.value
+  }
+  const withVoice = voice ? { voice } : {}
+  if (raw.provider === null) {
+    return { ok: true, value: { provider: null, persona: persona.value, ...withVoice } }
+  }
   const provider = checkProviderForm(raw.provider, { requireModel: true })
   if (!provider.ok) return provider
-  return { ok: true, value: { provider: provider.value, persona: persona.value } }
+  return { ok: true, value: { provider: provider.value, persona: persona.value, ...withVoice } }
 }
 
 /** Shows enough of a key to recognize it, like the provider consoles do. */

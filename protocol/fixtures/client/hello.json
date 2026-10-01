@@ -1,1 +1,1 @@
-{ "type": "hello", "protocol": 1, "client": "desktop/0.1.0", "token": null }
+{ "type": "hello", "protocol": 2, "client": "desktop/0.1.0", "token": null }

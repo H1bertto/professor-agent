@@ -2,7 +2,7 @@
 
 import asyncio
 import hmac
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -10,13 +10,16 @@ from pydantic import ValidationError
 from professor_core import __version__
 from professor_core.protocol import (
     PROTOCOL_VERSION,
+    AudioKind,
     CoreMessage,
     ErrorMessage,
     Hello,
     Ready,
     client_messages,
+    decode_audio,
 )
 from professor_core.session import Session
+from professor_core.speech_models import VoiceEngine
 
 HELLO_TIMEOUT_S = 5.0
 POLICY_VIOLATION = 1008
@@ -33,7 +36,9 @@ def token_matches(expected: str | None, provided: str | None) -> bool:
     return provided is not None and hmac.compare_digest(expected.encode(), provided.encode())
 
 
-async def serve_connection(websocket: WebSocket, *, token: str | None) -> None:
+async def serve_connection(
+    websocket: WebSocket, *, token: str | None, voice: VoiceEngine | None = None
+) -> None:
     if not accepts_origin(websocket.headers):
         await websocket.close(code=POLICY_VIOLATION)
         return
@@ -55,13 +60,23 @@ async def serve_connection(websocket: WebSocket, *, token: str | None) -> None:
         async with send_lock:
             await websocket.send_text(message.to_json())
 
+    # One lock for both, so speech frames stay behind the speech.segment they belong to.
+    async def send_audio(frame: bytes) -> None:
+        async with send_lock:
+            await websocket.send_bytes(frame)
+
     await send(Ready(core=__version__))
-    session = Session(send)
+    session = Session(send, send_audio=send_audio, voice=voice)
     try:
         while True:
-            raw = await websocket.receive_text()
+            frame = await websocket.receive()
+            if frame["type"] == "websocket.disconnect":
+                break
+            if frame.get("bytes") is not None:
+                await _receive_audio(frame["bytes"], session, send)
+                continue
             try:
-                message = client_messages.validate_json(raw)
+                message = client_messages.validate_json(frame.get("text") or "")
             except ValidationError:
                 await send(ErrorMessage(code="bad_request", message="Could not read that message."))
                 continue
@@ -73,6 +88,19 @@ async def serve_connection(websocket: WebSocket, *, token: str | None) -> None:
         pass
     finally:
         await session.close()
+
+
+async def _receive_audio(
+    frame: bytes, session: Session, send: Callable[[CoreMessage], Awaitable[None]]
+) -> None:
+    try:
+        kind, pcm = decode_audio(frame)
+    except ValueError:
+        kind, pcm = None, b""
+    if kind is not AudioKind.MICROPHONE:
+        await send(ErrorMessage(code="bad_request", message="Could not read that audio frame."))
+        return
+    await session.handle_audio(pcm)
 
 
 async def _receive_hello(websocket: WebSocket) -> Hello | None:

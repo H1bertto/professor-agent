@@ -22,8 +22,10 @@ export function fakeCipher({ available = true } = {}): Cipher {
 export class FakeCoreConnection implements TutorCore {
   currentStatus: CoreConnectionStatus = 'online'
   readonly sent: ClientMessage[] = []
+  readonly sentAudio: Uint8Array[] = []
   private readonly listeners = new Set<(message: CoreMessage) => void>()
   private readonly statusListeners = new Set<(status: CoreConnectionStatus) => void>()
+  private readonly audioListeners = new Set<(pcm: Uint8Array) => void>()
   /** Called for each sent message, to answer it. */
   reply: ((message: ClientMessage) => CoreMessage | null) | null = null
 
@@ -33,6 +35,21 @@ export class FakeCoreConnection implements TutorCore {
     const answer = this.reply?.(message)
     if (answer) queueMicrotask(() => this.emit(answer))
     return true
+  }
+
+  sendAudio(pcm: Uint8Array): boolean {
+    if (this.currentStatus !== 'online') return false
+    this.sentAudio.push(pcm)
+    return true
+  }
+
+  onAudio(listener: (pcm: Uint8Array) => void): () => void {
+    this.audioListeners.add(listener)
+    return () => this.audioListeners.delete(listener)
+  }
+
+  emitAudio(pcm: Uint8Array): void {
+    for (const listener of this.audioListeners) listener(pcm)
   }
 
   onMessage(listener: (message: CoreMessage) => void): () => void {

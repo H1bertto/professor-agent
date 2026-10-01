@@ -7,7 +7,16 @@ import {
   type Emotion,
   type LookTarget
 } from '../../../../shared/avatar'
-import { approach, breathing, clamp, createBlinker, mix, THINKING_GAZE } from '../motion'
+import {
+  approach,
+  breathing,
+  clamp,
+  createBlinker,
+  LISTENING_FOCUS,
+  LISTENING_GAZE,
+  mix,
+  THINKING_GAZE
+} from '../motion'
 import type { AvatarRenderer } from '../types'
 
 const MAX_PIXEL_RATIO = 1.5
@@ -38,8 +47,9 @@ export class VrmAvatar implements AvatarRenderer {
   private mouthTarget = 0
   private look: LookTarget = { x: 0, y: 0 }
   private lookGoal: LookTarget = { x: 0, y: 0 }
-  /** How much of the thinking and speaking poses shows, from 0 to 1, so changes are smooth. */
+  /** How much of each pose shows, from 0 to 1, so changes are smooth. */
   private thinking = 0
+  private listening = 0
   private speaking = 0
 
   constructor(canvas: HTMLCanvasElement) {
@@ -145,11 +155,22 @@ export class VrmAvatar implements AvatarRenderer {
 
   private animateBody(deltaSeconds: number): void {
     this.thinking = approach(this.thinking, this.state === 'thinking' ? 1 : 0, 5, deltaSeconds)
+    this.listening = approach(this.listening, this.state === 'listening' ? 1 : 0, 5, deltaSeconds)
     this.speaking = approach(this.speaking, this.state === 'speaking' ? 1 : 0, 5, deltaSeconds)
-    // While thinking, the avatar looks up and away from the cursor, then comes back.
+    // While thinking, the avatar looks up and away from the cursor, then comes back. While
+    // listening, it looks at the student.
+    const focus = this.listening * LISTENING_FOCUS
     const goal = {
-      x: mix(clamp(this.lookGoal.x, -1.5, 1.5), THINKING_GAZE.x, this.thinking),
-      y: mix(clamp(this.lookGoal.y, -1.5, 1.5), THINKING_GAZE.y, this.thinking)
+      x: mix(
+        mix(clamp(this.lookGoal.x, -1.5, 1.5), THINKING_GAZE.x, this.thinking),
+        LISTENING_GAZE.x,
+        focus
+      ),
+      y: mix(
+        mix(clamp(this.lookGoal.y, -1.5, 1.5), THINKING_GAZE.y, this.thinking),
+        LISTENING_GAZE.y,
+        focus
+      )
     }
     this.look = {
       x: approach(this.look.x, goal.x, 4, deltaSeconds),
@@ -159,13 +180,17 @@ export class VrmAvatar implements AvatarRenderer {
     const pitch = clamp(this.look.y, -1, 1) * 0.3
     const breath = breathing(this.time)
     const sway = Math.sin(this.time * 0.6) * 0.02
-    const tilt = this.thinking * 0.12
-    // Small nods while the teacher talks.
-    const nod = this.speaking * Math.sin(this.time * 4.2) * 0.025
+    // A listening avatar tilts its head the other way, and leans in a little.
+    const tilt = this.thinking * 0.12 - this.listening * 0.08
+    const leanIn = this.listening * 0.05
+    // Small nods while the teacher talks, and slower ones while it listens.
+    const nod =
+      this.speaking * Math.sin(this.time * 4.2) * 0.025 +
+      this.listening * Math.sin(this.time * 1.8) * 0.015
 
     this.bone('neck')?.rotation.set(pitch * 0.4, yaw * 0.4, tilt * 0.3)
     this.bone('head')?.rotation.set(pitch * 0.6 + nod, yaw * 0.6, sway + tilt)
-    this.bone('chest')?.rotation.set(breath * 0.015, 0, 0)
+    this.bone('chest')?.rotation.set(breath * 0.015 + leanIn, 0, 0)
     this.bone('spine')?.rotation.set(0, 0, sway * 0.5)
     this.bone('leftShoulder')?.rotation.set(0, 0, breath * 0.02)
     this.bone('rightShoulder')?.rotation.set(0, 0, -breath * 0.02)

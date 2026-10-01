@@ -13,6 +13,7 @@ import {
   scheduleDevAsk,
   scheduleOverlayCapture
 } from './debug-capture'
+import { devTalkRequested, devVoiceOverride, FileMicrophone, SpeechRecorder } from './dev-voice'
 import { KeyVault } from './key-vault'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
@@ -20,10 +21,11 @@ import { avatarRoots, settingsFile } from './paths'
 import { SettingsStore } from './settings-store'
 import { isSettingsWindow, sendToSettingsWindow, showSettingsWindow } from './settings-window'
 import { systemCipher } from './system-cipher'
-import { ASK_SHORTCUT, createTray, TOGGLE_OVERLAY_SHORTCUT } from './tray'
+import { ASK_SHORTCUT, createTray, TALK_SHORTCUT, TOGGLE_OVERLAY_SHORTCUT } from './tray'
 import { Tutor } from './tutor'
 import { TutorSettings } from './tutor-settings'
 import { importPngTuberFolder, importVrm, listUserAvatars } from './user-avatars'
+import { guardPermissions, registerVoiceChannels } from './voice-channels'
 import { clampToWorkArea, defaultOverlayBounds, overlaySize, type Rect } from './window-bounds'
 
 registerAvatarScheme()
@@ -60,8 +62,12 @@ async function start(): Promise<void> {
   core.onStatus(() => sendToSettingsWindow(IpcChannel.coreStatusChanged, coreStatus()))
   // The client keeps this until the core is ready, and sends it again after every reconnection.
   const devProvider = devProviderOverride()
-  const configure = tutorSettings.configureMessage()
-  core.send(devProvider ? { ...configure, provider: devProvider } : configure)
+  const devVoice = devVoiceOverride()
+  core.send({
+    ...tutorSettings.configureMessage(),
+    ...(devProvider && { provider: devProvider }),
+    ...(devVoice && { voice: devVoice })
+  })
   core.start()
   registerSettingsHandlers(tutorSettings, coreStatus)
 
@@ -69,6 +75,7 @@ async function start(): Promise<void> {
   ipcMain.handle(IpcChannel.avatarGet, () => resolveAvatarConfig(currentChoice(), userAvatars))
 
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
+  guardPermissions(overlay)
   registerOverlayControls(overlay, (overlayBounds) => settings.update({ overlayBounds }))
   const stopCursorTracking = startCursorTracking(overlay)
 
@@ -120,10 +127,48 @@ async function start(): Promise<void> {
     tray.refresh()
   }
 
+  // Development stand-ins for the microphone and the student's ears. See dev-voice.ts.
+  const fileMicrophone = await FileMicrophone.load()
+  const speechRecorder = SpeechRecorder.fromEnv()
+  let devTalkPending = devTalkRequested()
   const tutor = new Tutor(core, {
     answer: (answer) => companions.showAnswer(answer),
-    pose: setPose
+    pose: setPose,
+    microphone: (on) => {
+      if (fileMicrophone) fileMicrophone.set(on, (pcm) => tutor.hear(pcm))
+      else sendToOverlay(IpcChannel.overlayMicrophone, on)
+    },
+    speech: (command) => {
+      speechRecorder?.handle(command)
+      sendToOverlay(IpcChannel.overlaySpeech, command)
+    },
+    voiceStatus: (status) => {
+      sendToSettingsWindow(IpcChannel.voiceStatusChanged, status)
+      if (devTalkPending && status.state === 'ready') {
+        devTalkPending = false
+        setTimeout(() => talk(), 1000)
+      }
+    }
   })
+  ipcMain.handle(IpcChannel.voiceStatus, () => tutor.voiceStatus)
+  registerVoiceChannels(overlay, {
+    microphoneAudio: (pcm) => tutor.hear(pcm),
+    microphoneFailed: (message) => tutor.microphoneFailed(message),
+    speechReport: (report) => {
+      speechRecorder?.report(report)
+      tutor.speechReport(report)
+    }
+  })
+  const talk = (): void => {
+    // Tells, while developing, whether the hotkey reached the app at all.
+    if (!app.isPackaged) console.log(`Talk hotkey, answer ${tutor.current?.status ?? 'none'}`)
+    // The bubble shows only beside a visible avatar.
+    if (!overlay.isVisible()) {
+      overlay.showInactive()
+      tray.refresh()
+    }
+    tutor.listen()
+  }
   const companions = createCompanionWindows(overlay, {
     teacherName: () => settings.get().persona.name,
     ask: (question) => tutor.ask(question),
@@ -141,6 +186,7 @@ async function start(): Promise<void> {
       talking: pose.talking
     }),
     ask: () => companions.toggleAsk(),
+    talk,
     toggleOverlay,
     selectAvatar,
     importVrm: () => void importAvatar('vrm'),
@@ -161,7 +207,8 @@ async function start(): Promise<void> {
 
   for (const [shortcut, action] of [
     [TOGGLE_OVERLAY_SHORTCUT, toggleOverlay],
-    [ASK_SHORTCUT, () => companions.toggleAsk()]
+    [ASK_SHORTCUT, () => companions.toggleAsk()],
+    [TALK_SHORTCUT, talk]
   ] as const) {
     if (!globalShortcut.register(shortcut, action)) {
       console.warn(`Another app already uses ${shortcut}.`)
