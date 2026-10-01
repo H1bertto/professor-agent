@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fake_provider import FakeProvider
+from fake_provider import EMPTY_MODEL, FakeProvider
 from voice_fakes import FakeKokoro, ScriptedDetector, chunk, ready_engine, types
 
 from professor_core.protocol import (
@@ -284,6 +284,25 @@ async def test_a_new_question_stops_the_last_answers_speech(
 
     sent = await outbox.until("q1", "speech.end")
     assert SpeechEnd(id="q1", reason="cancelled") in sent
+    await session.close()
+
+
+async def test_says_so_when_the_answer_comes_back_empty(fake_provider: FakeProvider) -> None:
+    outbox = Outbox()
+    session = new_session(outbox)
+    empty = configure(fake_provider)
+    assert empty.provider is not None
+    empty = empty.model_copy(
+        update={"provider": empty.provider.model_copy(update={"model": EMPTY_MODEL})}
+    )
+    await session.handle(empty)
+    await session.handle(UserText(id="q1", text="since vs for?"))
+
+    answer = await outbox.answer("q1")
+    errors = [m for m in answer if m.type == "error"]  # type: ignore[attr-defined]
+    assert [e.code for e in errors] == ["provider_unavailable"]  # type: ignore[attr-defined]
+    assert "empty" in errors[0].message  # type: ignore[attr-defined]
+    assert answer[-1] == ResponseEnd(id="q1", reason="error")
     await session.close()
 
 

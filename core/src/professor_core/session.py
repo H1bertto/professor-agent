@@ -55,6 +55,7 @@ VOICE_UNAVAILABLE_MESSAGE = (
     "Voice is not ready. Turn it on in the settings and wait for the speech models."
 )
 NO_SPEECH_MESSAGE = "I did not hear anything. Try again, a little closer to the microphone."
+EMPTY_ANSWER_MESSAGE = "The AI provider sent back an empty answer. Try asking again."
 # English phrases from recent answers, which help Whisper hear them inside Portuguese.
 MAX_ENGLISH_PHRASES = 30
 
@@ -405,7 +406,18 @@ class Session:
     ) -> None:
         await self._start(response_id)
         await self._send_markup(response_id, self._parsers.pop(response_id).finish())
-        self._remember_english(self._answer_pieces.pop(response_id, []))
+        pieces = self._answer_pieces.pop(response_id, [])
+        if reason == "complete" and not any(piece.text.strip() for piece in pieces):
+            # A provider can end an answer without a word. Saying nothing would leave the
+            # student looking at the question, waiting for an answer that never comes.
+            logger.warning(f"Answer {response_id} came back empty from the provider")
+            await self._send(
+                ErrorMessage(
+                    id=response_id, code="provider_unavailable", message=EMPTY_ANSWER_MESSAGE
+                )
+            )
+            reason = "error"
+        self._remember_english(pieces)
         await self._send(ResponseEnd(id=response_id, reason=reason))
         clock = self._clocks.pop(response_id, None)
         speaker = self._speakers.pop(response_id, None)
