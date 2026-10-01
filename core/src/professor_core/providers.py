@@ -93,10 +93,17 @@ class _WatchedStream:
 
     async def _chunks(self) -> AsyncIterator[Any]:
         ending = AnswerEnding()
-        async for chunk in self._stream:
-            ending.see(chunk)
-            yield chunk
-        self._on_end(ending)
+        chunks = self._stream.__aiter__()
+        try:
+            async for chunk in chunks:
+                ending.see(chunk)
+                yield chunk
+            self._on_end(ending)
+        finally:
+            # Pipecat closes the iterator it holds so the HTTP stream's own generators close too.
+            # This one sits in between, so it passes that on.
+            if hasattr(chunks, "aclose"):
+                await chunks.aclose()
 
     async def close(self) -> None:
         await self._stream.close()
