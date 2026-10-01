@@ -35,7 +35,7 @@ Text-to-speech is Kokoro, through kokoro-onnx, on the CPU, which leaves the GPU 
 The answer is spoken in the language of the question, and text inside `<en>...</en>` is English. The student chooses who says the English parts, after the [mixed-language spike](../../spikes/mixed-language-tts/README.md):
 
 - **the teacher's voice** (the default): each piece becomes phonemes in its own language, and the sentence is rendered in one pass with the Portuguese voice `pf_dora`, so it keeps one rhythm;
-- **a native English voice**: the English runs are rendered apart, with the American voice `af_heart`.
+- **a native English voice**: English runs of three words or more, and whole English sentences, are rendered apart with the American voice `af_heart`. Shorter English inside Portuguese stays in the teacher's voice. At first every English run changed voice, but then the Portuguese around a single word was rendered alone, and short pieces came out slower and lower: 59 ms per phoneme, against 44 in one pass.
 
 Speech often lasts longer than the text. Stop, the hotkey, or a new question silences it, even after the text is complete.
 

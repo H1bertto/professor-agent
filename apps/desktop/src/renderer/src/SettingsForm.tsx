@@ -298,8 +298,9 @@ export function SettingsForm({
                 <option value="native">In a native English voice</option>
               </select>
               <small>
-                The native voice switches to an American speaker for the English parts. Some
-                students like the change, and others prefer one voice.
+                The native voice switches to an American speaker for English phrases and sentences.
+                Single English words stay in the teacher&apos;s voice, so the Portuguese around them
+                keeps its pace.
               </small>
             </label>
           </>
