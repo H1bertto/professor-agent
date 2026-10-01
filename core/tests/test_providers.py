@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from fake_provider import (
     ANTHROPIC_MODELS,
@@ -13,6 +15,8 @@ from professor_core.protocol import ProviderConfig
 from professor_core.providers import (
     CHAT_MAX_RETRIES,
     REQUEST_TIMEOUT_S,
+    AnswerEnding,
+    _WatchedStream,
     create_llm_service,
     describe_provider_error,
     list_models,
@@ -94,3 +98,45 @@ def test_other_errors_are_internal_and_never_echo_details() -> None:
     code, message = describe_provider_error(ValueError("secret-value"))
     assert code == "internal"
     assert "secret-value" not in message
+
+
+@pytest.mark.anyio
+async def test_tells_how_an_answer_ended_without_changing_it() -> None:
+    def chunk(content: str | None = None, finish: str | None = None) -> SimpleNamespace:
+        choice = SimpleNamespace(delta=SimpleNamespace(content=content), finish_reason=finish)
+        return SimpleNamespace(choices=[choice], usage=None)
+
+    class Stream:
+        def __init__(self, chunks: list[SimpleNamespace]) -> None:
+            self.chunks = chunks
+            self.closed = False
+
+        def __aiter__(self):  # type: ignore[no-untyped-def]
+            return self._iterate()
+
+        async def _iterate(self):  # type: ignore[no-untyped-def]
+            for item in self.chunks:
+                yield item
+
+        async def close(self) -> None:
+            self.closed = True
+
+    usage = SimpleNamespace(
+        completion_tokens=40, completion_tokens_details=SimpleNamespace(reasoning_tokens=40)
+    )
+    chunks = [chunk(""), chunk(finish="stop"), SimpleNamespace(choices=[], usage=usage)]
+    source = Stream(chunks)
+    endings: list[AnswerEnding] = []
+    watched = _WatchedStream(source, endings.append)
+
+    assert [item async for item in watched] == chunks
+    await watched.close()
+    assert source.closed
+    assert endings == [AnswerEnding(0, "stop", 40, 40)]
+    assert endings[0].describe() == (
+        "finish reason stop, 40 completion tokens, 40 of them for reasoning"
+    )
+
+    endings.clear()
+    _ = [item async for item in _WatchedStream(Stream([chunk("Oi"), chunk("!")]), endings.append)]
+    assert endings[0].text_chars == 3
