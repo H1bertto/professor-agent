@@ -13,6 +13,7 @@ import {
   scheduleDevAsk,
   scheduleOverlayCapture
 } from './debug-capture'
+import { devTalkRequested, devVoiceOverride, FileMicrophone, SpeechRecorder } from './dev-voice'
 import { KeyVault } from './key-vault'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
@@ -61,8 +62,12 @@ async function start(): Promise<void> {
   core.onStatus(() => sendToSettingsWindow(IpcChannel.coreStatusChanged, coreStatus()))
   // The client keeps this until the core is ready, and sends it again after every reconnection.
   const devProvider = devProviderOverride()
-  const configure = tutorSettings.configureMessage()
-  core.send(devProvider ? { ...configure, provider: devProvider } : configure)
+  const devVoice = devVoiceOverride()
+  core.send({
+    ...tutorSettings.configureMessage(),
+    ...(devProvider && { provider: devProvider }),
+    ...(devVoice && { voice: devVoice })
+  })
   core.start()
   registerSettingsHandlers(tutorSettings, coreStatus)
 
@@ -122,12 +127,28 @@ async function start(): Promise<void> {
     tray.refresh()
   }
 
+  // Development stand-ins for the microphone and the student's ears. See dev-voice.ts.
+  const fileMicrophone = await FileMicrophone.load()
+  const speechRecorder = SpeechRecorder.fromEnv()
+  let devTalkPending = devTalkRequested()
   const tutor = new Tutor(core, {
     answer: (answer) => companions.showAnswer(answer),
     pose: setPose,
-    microphone: (on) => sendToOverlay(IpcChannel.overlayMicrophone, on),
-    speech: (command) => sendToOverlay(IpcChannel.overlaySpeech, command),
-    voiceStatus: (status) => sendToSettingsWindow(IpcChannel.voiceStatusChanged, status)
+    microphone: (on) => {
+      if (fileMicrophone) fileMicrophone.set(on, (pcm) => tutor.hear(pcm))
+      else sendToOverlay(IpcChannel.overlayMicrophone, on)
+    },
+    speech: (command) => {
+      speechRecorder?.handle(command)
+      sendToOverlay(IpcChannel.overlaySpeech, command)
+    },
+    voiceStatus: (status) => {
+      sendToSettingsWindow(IpcChannel.voiceStatusChanged, status)
+      if (devTalkPending && status.state === 'ready') {
+        devTalkPending = false
+        setTimeout(() => talk(), 1000)
+      }
+    }
   })
   ipcMain.handle(IpcChannel.voiceStatus, () => tutor.voiceStatus)
   registerVoiceChannels(overlay, {
