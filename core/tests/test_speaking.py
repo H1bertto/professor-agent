@@ -88,17 +88,48 @@ def test_the_teachers_voice_renders_a_mixed_sentence_in_one_pass() -> None:
     assert [(part.text, part.lang) for part in parts] == [("Usamos since aqui.", "pt")]
 
 
-def test_the_native_voice_says_english_runs_in_an_english_voice() -> None:
+def test_the_native_voice_says_longer_english_runs() -> None:
     kokoro = FakeKokoro()
-    sentence = [Piece("Usamos ", "pt"), Piece("since", "en"), Piece(".", "pt")]
+    sentence = [
+        Piece("Em inglês dizemos ", "pt"),
+        Piece("I have been living here", "en"),
+        Piece(".", "pt"),
+    ]
 
     parts = render_sentence(kokoro, sentence, "native")
 
     assert [(call["text"], call["voice"], call["lang"]) for call in kokoro.calls] == [
-        ("Usamos", TEACHER_VOICE, "pt-br"),
-        ("since", NATIVE_ENGLISH_VOICE, "en-us"),
+        ("<pt-br:Em inglês dizemos>", TEACHER_VOICE, "en-us"),
+        ("I have been living here", NATIVE_ENGLISH_VOICE, "en-us"),
     ]
-    assert [(part.text, part.lang) for part in parts] == [("Usamos", "pt"), ("since", "en")]
+    assert [(part.text, part.lang) for part in parts] == [
+        ("Em inglês dizemos", "pt"),
+        ("I have been living here", "en"),
+    ]
+
+
+def test_the_native_voice_leaves_single_english_words_to_the_teacher() -> None:
+    kokoro = FakeKokoro()
+    sentence = [Piece("Usamos ", "pt"), Piece("since", "en"), Piece(" aqui.", "pt")]
+
+    parts = render_sentence(kokoro, sentence, "native")
+
+    # One pass, as in the teacher's voice, so the Portuguese around the word keeps its pace.
+    assert [(call["text"], call["voice"]) for call in kokoro.calls] == [
+        ("<pt-br:Usamos> <en-us:since> <pt-br:aqui.>", TEACHER_VOICE)
+    ]
+    assert [(part.text, part.lang) for part in parts] == [("Usamos since aqui.", "pt")]
+
+
+def test_the_native_voice_says_a_whole_english_sentence_however_short() -> None:
+    kokoro = FakeKokoro()
+
+    parts = render_sentence(kokoro, [Piece("Great job!", "en")], "native")
+
+    assert [(call["text"], call["voice"]) for call in kokoro.calls] == [
+        ("Great job!", NATIVE_ENGLISH_VOICE)
+    ]
+    assert [(part.text, part.lang) for part in parts] == [("Great job!", "en")]
 
 
 def test_a_space_between_two_english_spans_is_kept() -> None:
@@ -111,11 +142,10 @@ def test_a_space_between_two_english_spans_is_kept() -> None:
 
     native = FakeKokoro()
     parts = render_sentence(native, sentence, "native")
-    assert [(call["text"], call["voice"]) for call in native.calls] == [
-        ("since for", NATIVE_ENGLISH_VOICE),
-        ("são diferentes.", TEACHER_VOICE),
+    assert [call["text"] for call in native.calls] == [
+        "<en-us:since> <en-us:for> <pt-br:são diferentes.>"
     ]
-    assert [part.text for part in parts] == ["since for", "são diferentes."]
+    assert [part.text for part in parts] == ["since for são diferentes."]
 
     teacher = FakeKokoro()
     parts = render_sentence(teacher, sentence, "teacher")
