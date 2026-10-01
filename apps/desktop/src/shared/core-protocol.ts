@@ -39,6 +39,16 @@ export const VOICE_OFF: VoiceConfig = {
   englishVoice: 'teacher'
 }
 
+/** Reads voice settings from untrusted data, or gives `null` when they do not match. */
+export function parseVoiceConfig(raw: unknown): VoiceConfig | null {
+  if (!isRecord(raw)) return null
+  const { enabled, speakAnswers, spokenLanguage, englishVoice } = raw
+  if (typeof enabled !== 'boolean' || typeof speakAnswers !== 'boolean') return null
+  if (spokenLanguage !== 'auto' && !isSpokenLanguage(spokenLanguage)) return null
+  if (englishVoice !== 'teacher' && englishVoice !== 'native') return null
+  return { enabled, speakAnswers, spokenLanguage, englishVoice }
+}
+
 export type ClientMessage =
   | { type: 'hello'; protocol: number; client: string; token: string | null }
   | {

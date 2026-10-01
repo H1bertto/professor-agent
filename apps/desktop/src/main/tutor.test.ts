@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Answer, AvatarPose, SpeechCommand } from '../shared/api'
+import type { Answer, AvatarPose, SpeechCommand, VoiceStatusView } from '../shared/api'
 import type { ClientMessage, CoreMessage } from '../shared/core-protocol'
 import { FakeCoreConnection } from './test-helpers'
 import { appendSegments, LISTEN_LIMIT_MS, SPEECH_GRACE_MS, Tutor } from './tutor'
@@ -11,6 +11,7 @@ let answers: Answer[]
 let poses: Partial<AvatarPose>[]
 let microphone: boolean[]
 let speech: SpeechCommand[]
+let voiceStatuses: VoiceStatusView[]
 let tutor: Tutor
 
 beforeEach(() => {
@@ -20,11 +21,13 @@ beforeEach(() => {
   poses = []
   microphone = []
   speech = []
+  voiceStatuses = []
   tutor = new Tutor(core, {
     answer: (answer) => answers.push(answer),
     pose: (changes) => poses.push(changes),
     microphone: (on) => microphone.push(on),
-    speech: (command) => speech.push(command)
+    speech: (command) => speech.push(command),
+    voiceStatus: (status) => voiceStatuses.push(status)
   })
 })
 
@@ -293,6 +296,17 @@ describe('Tutor voice', () => {
 
     expect(core.sent.filter((message) => message.type === 'listen.start')).toEqual([])
     expect(microphone).toEqual([])
+  })
+
+  it('reports changes of the speech models, and voice off when the core goes away', () => {
+    expect(tutor.voiceStatus).toEqual({ state: 'off', progress: null, message: null })
+    core.emit({ type: 'voice.status', state: 'downloading', progress: 0.5, message: null })
+    core.emit({ type: 'voice.status', state: 'downloading', progress: 0.5, message: null })
+    core.emit(VOICE_READY)
+    core.setStatus('offline')
+
+    expect(voiceStatuses.map((status) => status.state)).toEqual(['downloading', 'ready', 'off'])
+    expect(tutor.voiceStatus.state).toBe('off')
   })
 
   it('interrupts the teacher to listen', () => {

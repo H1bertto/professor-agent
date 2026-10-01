@@ -6,12 +6,7 @@ import type {
   SaveResult,
   SettingsView
 } from '../shared/api'
-import {
-  VOICE_OFF,
-  type ClientMessage,
-  type CoreMessage,
-  type ProviderConfig
-} from '../shared/core-protocol'
+import type { ClientMessage, CoreMessage, ProviderConfig } from '../shared/core-protocol'
 import { findPreset, providerBaseUrl, type ProviderPreset } from '../shared/providers'
 import type { KeyVault } from './key-vault'
 import { checkProviderForm, checkSettingsForm, keyHint } from './provider-settings'
@@ -51,7 +46,7 @@ export class TutorSettings {
   }
 
   view(): SettingsView {
-    const { provider, persona } = this.store.get()
+    const { provider, persona, voice } = this.store.get()
     return {
       provider: provider && {
         preset: provider.preset,
@@ -60,28 +55,28 @@ export class TutorSettings {
         keyHint: this.apiKey ? keyHint(this.apiKey) : null
       },
       persona,
+      voice,
       keyStorageAvailable: this.vault.available
     }
   }
 
   /** The provider stays `null` until a model and a key that can be decrypted are saved. */
   configureMessage(): ConfigureMessage {
-    const { provider, persona } = this.store.get()
+    const { provider, persona, voice } = this.store.get()
     const preset = provider && findPreset(provider.preset)
     const ready = provider && preset && this.apiKey && provider.model
     return {
       type: 'configure',
       provider: ready ? providerConfig(preset, provider, this.apiKey as string) : null,
       persona,
-      // The voice settings arrive with the voice section of the settings window.
-      voice: VOICE_OFF
+      voice
     }
   }
 
   save(raw: unknown): SaveResult {
     const form = checkSettingsForm(raw)
     if (!form.ok) return form
-    const { provider, persona } = form.value
+    const { provider, persona, voice = this.store.get().voice } = form.value
 
     let stored: StoredProvider | null = null
     let apiKey: string | null = null
@@ -105,7 +100,7 @@ export class TutorSettings {
       }
     }
 
-    this.store.update({ provider: stored, persona })
+    this.store.update({ provider: stored, persona, voice })
     this.apiKey = apiKey
     this.core.send(this.configureMessage())
     return { ok: true, settings: this.view() }

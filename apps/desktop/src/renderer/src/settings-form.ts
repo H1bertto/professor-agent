@@ -1,6 +1,7 @@
 // What the settings form holds, and how it turns into the requests the main process checks.
 
-import type { ProviderForm, SettingsForm, SettingsView } from '../../shared/api'
+import type { ProviderForm, SettingsForm, SettingsView, VoiceStatusView } from '../../shared/api'
+import type { VoiceConfig } from '../../shared/core-protocol'
 import {
   findPreset,
   PROVIDER_PRESETS,
@@ -18,6 +19,7 @@ export interface FormState {
   apiKey: string
   name: string
   instructions: string
+  voice: VoiceConfig
 }
 
 export function presetById(id: ProviderPresetId): ProviderPreset {
@@ -32,7 +34,8 @@ export function initialForm(view: SettingsView): FormState {
     model: view.provider?.model ?? presetById(preset).defaultModel,
     apiKey: '',
     name: view.persona.name,
-    instructions: view.persona.instructions
+    instructions: view.persona.instructions,
+    voice: { ...view.voice }
   }
 }
 
@@ -64,7 +67,8 @@ export function toProviderForm(form: FormState): ProviderForm {
 export function toSettingsForm(form: FormState): SettingsForm {
   return {
     provider: toProviderForm(form),
-    persona: { name: form.name, instructions: form.instructions }
+    persona: { name: form.name, instructions: form.instructions },
+    voice: form.voice
   }
 }
 
@@ -88,4 +92,28 @@ export function modelWarning(model: string, models: readonly string[]): string |
   const chosen = model.trim()
   if (!chosen || models.length === 0 || models.includes(chosen)) return null
   return 'This key does not list this model. Pick one from the list, or check the name.'
+}
+
+/** The line under the voice settings, or `null` while voice is not chosen. */
+export function voiceStatusLine(
+  status: VoiceStatusView,
+  { coreOnline, saved, chosen }: { coreOnline: boolean; saved: boolean; chosen: boolean }
+): { text: string; kind: 'ok' | 'info' | 'error' } | null {
+  if (!chosen) return null
+  if (!saved) return { text: 'Save to turn voice on.', kind: 'info' }
+  if (!coreOnline) return { text: 'Voice starts when the core is running.', kind: 'info' }
+  switch (status.state) {
+    case 'off':
+      return { text: 'Starting voice...', kind: 'info' }
+    case 'downloading': {
+      const done = status.progress === null ? '' : ` (${Math.round(status.progress * 100)}%)`
+      return { text: `Downloading the speech models${done}...`, kind: 'info' }
+    }
+    case 'loading':
+      return { text: 'Loading the speech models...', kind: 'info' }
+    case 'ready':
+      return { text: 'Voice is ready.', kind: 'ok' }
+    default:
+      return { text: status.message ?? 'Voice is not available on this computer.', kind: 'error' }
+  }
 }

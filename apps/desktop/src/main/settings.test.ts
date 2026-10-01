@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_SETTINGS, parseSettings } from './settings'
+import { DEFAULT_SETTINGS, DEFAULT_VOICE, parseSettings } from './settings'
 
 const PROVIDER = {
   preset: 'anthropic',
@@ -14,7 +14,8 @@ const VALID = {
   avatar: { kind: 'pngtuber', id: 'builtin:chalk' },
   overlayBounds: { x: 10, y: 20, width: 300, height: 400 },
   provider: PROVIDER,
-  persona: { name: 'Ana', instructions: 'Correct my grammar.' }
+  persona: { name: 'Ana', instructions: 'Correct my grammar.' },
+  voice: { enabled: true, speakAnswers: false, spokenLanguage: 'en', englishVoice: 'native' }
 }
 
 describe('parseSettings', () => {
@@ -26,6 +27,19 @@ describe('parseSettings', () => {
     for (const raw of [null, undefined, 42, 'text', [], { version: 2 }]) {
       expect(parseSettings(raw)).toEqual(DEFAULT_SETTINGS)
     }
+  })
+
+  it('falls back to the default voice settings when they are missing or invalid', () => {
+    const invalidVoices = [
+      undefined,
+      { ...VALID.voice, enabled: 'yes' },
+      { ...VALID.voice, spokenLanguage: 'fr' },
+      { ...VALID.voice, englishVoice: 'robot' }
+    ]
+    for (const voice of invalidVoices) {
+      expect(parseSettings({ ...VALID, voice }).voice).toEqual(DEFAULT_VOICE)
+    }
+    expect(DEFAULT_VOICE.enabled).toBe(false)
   })
 
   it('falls back to the default avatar when the avatar is invalid', () => {

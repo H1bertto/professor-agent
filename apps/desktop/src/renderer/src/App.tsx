@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { CoreStatus, SettingsView } from '../../shared/api'
+import type { CoreStatus, SettingsView, VoiceStatusView } from '../../shared/api'
 import { SettingsForm } from './SettingsForm'
 
 function describe(core: CoreStatus): string {
@@ -16,19 +16,29 @@ function describe(core: CoreStatus): string {
 function App(): React.JSX.Element {
   const [view, setView] = useState<SettingsView | null>(null)
   const [core, setCore] = useState<CoreStatus>({ connection: 'connecting', version: null })
+  const [voice, setVoice] = useState<VoiceStatusView>({
+    state: 'off',
+    progress: null,
+    message: null
+  })
 
   useEffect(() => {
     let active = true
-    const stopListening = window.professor.settings.onCoreStatus(setCore)
+    const stopFollowingCore = window.professor.settings.onCoreStatus(setCore)
+    const stopFollowingVoice = window.professor.settings.onVoiceStatus(setVoice)
     window.professor.settings.getCoreStatus().then((status) => {
       if (active) setCore(status)
+    })
+    window.professor.settings.getVoiceStatus().then((status) => {
+      if (active) setVoice(status)
     })
     window.professor.settings.get().then((settings) => {
       if (active) setView(settings)
     })
     return () => {
       active = false
-      stopListening()
+      stopFollowingCore()
+      stopFollowingVoice()
     }
   }, [])
 
@@ -42,7 +52,16 @@ function App(): React.JSX.Element {
         </p>
       </header>
 
-      {view ? <SettingsForm view={view} onSaved={setView} /> : <p>Loading the settings...</p>}
+      {view ? (
+        <SettingsForm
+          view={view}
+          voiceStatus={voice}
+          coreOnline={core.connection === 'online'}
+          onSaved={setView}
+        />
+      ) : (
+        <p>Loading the settings...</p>
+      )}
 
       <footer className="credits">
         3D avatar: Seed-san model by VirtualCast, Inc. (

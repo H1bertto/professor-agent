@@ -1,5 +1,5 @@
 import { AVATAR_ID_PATTERN, type AvatarChoice } from '../shared/avatar'
-import type { PersonaConfig } from '../shared/core-protocol'
+import { parseVoiceConfig, type PersonaConfig, type VoiceConfig } from '../shared/core-protocol'
 import {
   DEFAULT_PERSONA,
   findPreset,
@@ -25,6 +25,15 @@ export interface Settings {
   overlayBounds: Rect | null
   provider: StoredProvider | null
   persona: PersonaConfig
+  voice: VoiceConfig
+}
+
+/** Voice starts off, since it downloads about 2 GB of speech models the first time. */
+export const DEFAULT_VOICE: VoiceConfig = {
+  enabled: false,
+  speakAnswers: true,
+  spokenLanguage: 'auto',
+  englishVoice: 'teacher'
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,7 +41,8 @@ export const DEFAULT_SETTINGS: Settings = {
   avatar: { kind: 'vrm', id: 'builtin:seed-san' },
   overlayBounds: null,
   provider: null,
-  persona: DEFAULT_PERSONA
+  persona: DEFAULT_PERSONA,
+  voice: DEFAULT_VOICE
 }
 
 // Encrypted keys are a little longer than the keys themselves, in base64.
@@ -46,7 +56,8 @@ export function parseSettings(raw: unknown): Settings {
     avatar: parseAvatarChoice(raw.avatar) ?? { ...DEFAULT_SETTINGS.avatar },
     overlayBounds: parseRect(raw.overlayBounds),
     provider: parseProvider(raw.provider),
-    persona: parsePersona(raw.persona)
+    persona: parsePersona(raw.persona),
+    voice: parseVoiceConfig(raw.voice) ?? { ...DEFAULT_VOICE }
   }
 }
 

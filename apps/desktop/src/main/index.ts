@@ -126,8 +126,10 @@ async function start(): Promise<void> {
     answer: (answer) => companions.showAnswer(answer),
     pose: setPose,
     microphone: (on) => sendToOverlay(IpcChannel.overlayMicrophone, on),
-    speech: (command) => sendToOverlay(IpcChannel.overlaySpeech, command)
+    speech: (command) => sendToOverlay(IpcChannel.overlaySpeech, command),
+    voiceStatus: (status) => sendToSettingsWindow(IpcChannel.voiceStatusChanged, status)
   })
+  ipcMain.handle(IpcChannel.voiceStatus, () => tutor.voiceStatus)
   registerVoiceChannels(overlay, {
     microphoneAudio: (pcm) => tutor.hear(pcm),
     microphoneFailed: (message) => tutor.microphoneFailed(message),

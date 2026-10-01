@@ -1,7 +1,7 @@
 // Types and channel names shared by the main, preload, and renderer processes.
 
 import type { AvatarConfig, AvatarState, Emotion, LookTarget } from './avatar'
-import type { PersonaConfig, Segment } from './core-protocol'
+import type { PersonaConfig, Segment, VoiceConfig, VoiceState } from './core-protocol'
 import type { ProviderPresetId } from './providers'
 
 export type CoreConnectionStatus = 'connecting' | 'online' | 'offline'
@@ -10,6 +10,15 @@ export interface CoreStatus {
   connection: CoreConnectionStatus
   /** The core version, known once the connection is open. */
   version: string | null
+}
+
+/** Where the speech models are, as the core last reported. */
+export interface VoiceStatusView {
+  state: VoiceState
+  /** The download progress, from 0 to 1, while downloading. */
+  progress: number | null
+  /** Why voice is unavailable, in words for the student. */
+  message: string | null
 }
 
 /** Where the mouse cursor is, sent to the overlay while it moves. */
@@ -82,6 +91,7 @@ export interface ProviderView {
 export interface SettingsView {
   provider: ProviderView | null
   persona: PersonaConfig
+  voice: VoiceConfig
   /** Whether the system can encrypt API keys. Without it, keys cannot be saved. */
   keyStorageAvailable: boolean
 }
@@ -100,6 +110,8 @@ export interface SettingsForm {
   /** `null` removes the provider and its key. */
   provider: ProviderForm | null
   persona: PersonaConfig
+  /** Leave it out to keep the saved voice settings. */
+  voice?: VoiceConfig
 }
 
 export type SaveResult = { ok: true; settings: SettingsView } | { ok: false; message: string }
@@ -114,6 +126,8 @@ export interface ProviderTestResult {
 export const IpcChannel = {
   coreStatus: 'core:status',
   coreStatusChanged: 'core:status-changed',
+  voiceStatus: 'voice:status',
+  voiceStatusChanged: 'voice:status-changed',
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
   settingsTestProvider: 'settings:test-provider',
@@ -195,6 +209,8 @@ export interface SettingsApi {
   testProvider(provider: ProviderForm): Promise<ProviderTestResult>
   getCoreStatus(): Promise<CoreStatus>
   onCoreStatus(listener: (status: CoreStatus) => void): () => void
+  getVoiceStatus(): Promise<VoiceStatusView>
+  onVoiceStatus(listener: (status: VoiceStatusView) => void): () => void
 }
 
 /** API that the preload script exposes to the renderer as `window.professor`. */

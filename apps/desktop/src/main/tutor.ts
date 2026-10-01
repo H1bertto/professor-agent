@@ -6,7 +6,8 @@ import type {
   AvatarPose,
   CoreConnectionStatus,
   SpeechCommand,
-  SpeechReport
+  SpeechReport,
+  VoiceStatusView
 } from '../shared/api'
 import type { CoreMessage, Segment } from '../shared/core-protocol'
 import { CORE_OFFLINE_MESSAGE, type CoreConnection } from './tutor-settings'
@@ -26,6 +27,8 @@ export interface TutorEvents {
   microphone(on: boolean): void
   /** Drives the speech playback in the overlay. */
   speech(command: SpeechCommand): void
+  /** The speech models changed state, for the settings window. */
+  voiceStatus(status: VoiceStatusView): void
 }
 
 type VoiceStatus = Extract<CoreMessage, { type: 'voice.status' }>
@@ -91,6 +94,11 @@ export class Tutor {
   /** The last answer, to show again when the bubble opens. */
   get current(): Answer | null {
     return this.answer && structuredClone(this.answer)
+  }
+
+  get voiceStatus(): VoiceStatusView {
+    const { state, progress, message } = this.voice
+    return { state, progress, message }
   }
 
   ask(question: string): AskResult {
@@ -256,7 +264,7 @@ export class Tutor {
 
   private receive(message: CoreMessage): void {
     if (message.type === 'voice.status') {
-      this.voice = message
+      this.setVoice(message)
       return
     }
     const answer = this.answer
@@ -385,8 +393,17 @@ export class Tutor {
     answer.speakingIndex = null
   }
 
+  private setVoice(status: VoiceStatus): void {
+    const changed =
+      status.state !== this.voice.state ||
+      status.progress !== this.voice.progress ||
+      status.message !== this.voice.message
+    this.voice = status
+    if (changed) this.events.voiceStatus(this.voiceStatus)
+  }
+
   private lostCore(): void {
-    this.voice = VOICE_OFF
+    this.setVoice(VOICE_OFF)
     const answer = this.answer
     if (!answer) return
     if (isRunning(answer.status)) {

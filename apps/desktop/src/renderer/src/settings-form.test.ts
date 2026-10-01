@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SettingsView } from '../../shared/api'
+import type { SettingsView, VoiceStatusView } from '../../shared/api'
 import {
   initialForm,
   modelWarning,
   savedKeyApplies,
   toProviderForm,
   toSettingsForm,
+  voiceStatusLine,
   withPreset
 } from './settings-form'
 
 const EMPTY: SettingsView = {
   provider: null,
   persona: { name: 'Professor', instructions: '' },
+  voice: { enabled: false, speakAnswers: true, spokenLanguage: 'auto', englishVoice: 'teacher' },
   keyStorageAvailable: true
 }
 
@@ -75,5 +77,33 @@ describe('settings form', () => {
     expect(modelWarning('claude-opus-5', ['claude-opus-5'])).toBeNull()
     expect(modelWarning('', ['claude-opus-5'])).toBeNull()
     expect(modelWarning('gpt-4', ['claude-opus-5'])).not.toBeNull()
+  })
+})
+
+describe('voice settings', () => {
+  it('sends the voice settings with the rest of the form', () => {
+    const form = initialForm(EMPTY)
+    const voice = { ...form.voice, enabled: true }
+    expect(toSettingsForm({ ...form, voice }).voice).toEqual(voice)
+  })
+
+  it('tells where voice is, once the student chose it', () => {
+    const status = (
+      state: VoiceStatusView['state'],
+      progress: number | null = null
+    ): VoiceStatusView => ({
+      state,
+      progress,
+      message: state === 'error' ? 'No GPU.' : null
+    })
+    const on = { coreOnline: true, saved: true, chosen: true }
+    expect(voiceStatusLine(status('ready'), { ...on, chosen: false })).toBeNull()
+    expect(voiceStatusLine(status('off'), { ...on, saved: false })?.text).toBe(
+      'Save to turn voice on.'
+    )
+    expect(voiceStatusLine(status('off'), { ...on, coreOnline: false })?.text).toContain('core')
+    expect(voiceStatusLine(status('downloading', 0.42), on)?.text).toContain('(42%)')
+    expect(voiceStatusLine(status('ready'), on)).toEqual({ text: 'Voice is ready.', kind: 'ok' })
+    expect(voiceStatusLine(status('error'), on)).toEqual({ text: 'No GPU.', kind: 'error' })
   })
 })

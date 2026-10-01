@@ -2,8 +2,10 @@ import { useState } from 'react'
 import type {
   ProviderTestResult,
   SettingsForm as SettingsRequest,
-  SettingsView
+  SettingsView,
+  VoiceStatusView
 } from '../../shared/api'
+import type { VoiceConfig } from '../../shared/core-protocol'
 import { LIMITS, PROVIDER_PRESETS, type ProviderPresetId } from '../../shared/providers'
 import {
   initialForm,
@@ -12,6 +14,7 @@ import {
   savedKeyApplies,
   toProviderForm,
   toSettingsForm,
+  voiceStatusLine,
   withPreset,
   type FormState
 } from './settings-form'
@@ -27,10 +30,17 @@ type SaveState =
 
 interface SettingsFormProps {
   view: SettingsView
+  voiceStatus: VoiceStatusView
+  coreOnline: boolean
   onSaved(view: SettingsView): void
 }
 
-export function SettingsForm({ view, onSaved }: SettingsFormProps): React.JSX.Element {
+export function SettingsForm({
+  view,
+  voiceStatus,
+  coreOnline,
+  onSaved
+}: SettingsFormProps): React.JSX.Element {
   const [form, setForm] = useState<FormState>(() => initialForm(view))
   const [models, setModels] = useState<string[]>([])
   const [test, setTest] = useState<TestState>({ status: 'idle' })
@@ -39,9 +49,20 @@ export function SettingsForm({ view, onSaved }: SettingsFormProps): React.JSX.El
   const preset = presetById(form.preset)
   const keepsSavedKey = savedKeyApplies(form, view)
   const warning = modelWarning(form.model, models)
+  const voiceLine = voiceStatusLine(voiceStatus, {
+    coreOnline,
+    saved: view.voice.enabled,
+    chosen: form.voice.enabled
+  })
+  const downloading = voiceLine !== null && voiceStatus.state === 'downloading'
 
   const change = (changes: Partial<FormState>): void => {
     setForm((current) => ({ ...current, ...changes }))
+    setSave({ status: 'idle' })
+  }
+
+  const changeVoice = (changes: Partial<VoiceConfig>): void => {
+    setForm((current) => ({ ...current, voice: { ...current.voice, ...changes } }))
     setSave({ status: 'idle' })
   }
 
@@ -89,7 +110,11 @@ export function SettingsForm({ view, onSaved }: SettingsFormProps): React.JSX.El
       return
     }
     void store(
-      { provider: null, persona: { name: form.name, instructions: form.instructions } },
+      {
+        provider: null,
+        persona: { name: form.name, instructions: form.instructions },
+        voice: form.voice
+      },
       'The provider and its key were removed.'
     )
   }
@@ -217,6 +242,82 @@ export function SettingsForm({ view, onSaved }: SettingsFormProps): React.JSX.El
             onChange={(event) => change({ instructions: event.target.value })}
           />
         </label>
+      </section>
+
+      <section>
+        <h2>Voice</h2>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={form.voice.enabled}
+            onChange={(event) => changeVoice({ enabled: event.target.checked })}
+          />
+          <span>Talk with the teacher</span>
+        </label>
+        <p className="hint">
+          Press Ctrl+Shift with the key below Esc to ask out loud, and press it again to stop.
+          Speech runs on this computer, and only the text of your question goes to the AI provider.
+          The first time, voice downloads about 2 GB of speech models.
+        </p>
+
+        {form.voice.enabled && (
+          <>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.voice.speakAnswers}
+                onChange={(event) => changeVoice({ speakAnswers: event.target.checked })}
+              />
+              <span>Speak the answers</span>
+            </label>
+            <label className="field">
+              <span>Language you speak</span>
+              <select
+                value={form.voice.spokenLanguage}
+                onChange={(event) =>
+                  changeVoice({
+                    spokenLanguage: event.target.value as VoiceConfig['spokenLanguage']
+                  })
+                }
+              >
+                <option value="auto">Portuguese or English, detected</option>
+                <option value="pt">Portuguese</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>English words in the answers</span>
+              <select
+                value={form.voice.englishVoice}
+                disabled={!form.voice.speakAnswers}
+                onChange={(event) =>
+                  changeVoice({ englishVoice: event.target.value as VoiceConfig['englishVoice'] })
+                }
+              >
+                <option value="teacher">In the teacher&apos;s voice</option>
+                <option value="native">In a native English voice</option>
+              </select>
+              <small>
+                The native voice switches to an American speaker for the English parts. Some
+                students like the change, and others prefer one voice.
+              </small>
+            </label>
+          </>
+        )}
+
+        {voiceLine && (
+          <p className={`notice notice-${voiceLine.kind}`} role="status">
+            {voiceLine.text}
+          </p>
+        )}
+        {downloading && (
+          <progress
+            className="download"
+            value={voiceStatus.progress ?? undefined}
+            max={1}
+            aria-label="Speech model download"
+          />
+        )}
       </section>
 
       <div className="row actions">
