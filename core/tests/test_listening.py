@@ -7,6 +7,7 @@ from professor_core.listening import (
     NO_SPEECH_TIMEOUT_S,
     Listening,
     pick_language,
+    portuguese_prompt,
     transcribe,
 )
 
@@ -68,7 +69,7 @@ def test_chooses_only_between_portuguese_and_english() -> None:
     assert pick_language(spanish, np.zeros(32_000, dtype=np.float32), "auto", "en") == "pt"
 
 
-def test_uses_english_words_as_hints_only_for_portuguese() -> None:
+def test_names_the_english_words_in_a_portuguese_prompt_only_for_portuguese() -> None:
     whisper = FakeWhisper()
     audio = np.zeros(32_000, dtype=np.float32)
 
@@ -76,11 +77,28 @@ def test_uses_english_words_as_hints_only_for_portuguese() -> None:
         whisper, audio, spoken_language="pt", last_language="pt", english_words=["since"]
     )
     assert (heard.text, heard.lang) == ("since vs for?", "pt")
-    assert whisper.calls[-1]["hotwords"] == "since"
+    assert whisper.calls[-1]["initial_prompt"] == (
+        "Aluno brasileiro estudando inglês, usando palavras como since."
+    )
     assert whisper.calls[-1]["language"] == "pt"
+    # A bare list of English phrases made Whisper translate Portuguese questions into English.
+    assert "hotwords" not in whisper.calls[-1]
 
     transcribe(whisper, audio, spoken_language="en", last_language="pt", english_words=["since"])
-    assert whisper.calls[-1]["hotwords"] is None
+    assert whisper.calls[-1]["initial_prompt"] is None
+
+
+def test_the_prompt_keeps_recent_short_english_words() -> None:
+    words = ["for", "I have been living here since 2020", "since", "for"]
+    assert portuguese_prompt(words) == (
+        "Aluno brasileiro estudando inglês, usando palavras como since, for."
+    )
+    assert portuguese_prompt([]) is None
+    assert portuguese_prompt(["a sentence that is far too long"]) is None
+
+    many = [f"word{index}" for index in range(30)]
+    prompt = portuguese_prompt(many) or ""
+    assert "word29" in prompt and "word10" in prompt and "word9," not in prompt
 
 
 def test_drops_what_whisper_invents_for_silence() -> None:

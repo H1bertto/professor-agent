@@ -26,7 +26,7 @@ Listening runs outside the Pipecat pipeline. With a hotkey, the turn is already 
 
 Speech-to-text is faster-whisper large-v3-turbo on CUDA, with int8 weights and float16 math, in 1.1 GB of GPU memory. The student sets the language in the settings: Portuguese, English, or detected between those two only. Detection across all languages got one-word questions wrong in the phase 0 spike.
 
-English words inside a Portuguese question are the hard part: "since" came out as "Sensei". Whisper accepts hotwords, so the core passes the English phrases of the teacher's recent answers, which are the words the student practices. With them, "since" came out right. The first question of a session has no hints yet, and in the Windows check "since" came out as "SimCe".
+English words inside a Portuguese question are the hard part: "since" came out as "Sensei" or "SimCe". The core names the short English words of the teacher's recent answers, which are the words the student practices, in a Portuguese sentence that Whisper reads before the question. It has to be a Portuguese sentence. The first version passed them through Whisper's hotwords, as a bare list of English phrases, and after a few answers Whisper translated whole Portuguese questions into English. The first question of a session has no hints yet.
 
 ### 3. Kokoro on the CPU, sentence by sentence
 

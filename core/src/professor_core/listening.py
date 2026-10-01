@@ -25,6 +25,10 @@ MAX_LISTEN_S = 30.0
 SHORT_AUDIO_S = 1.0
 # Whisper invents words for silence and noise. Segments it rates this likely to be silence go.
 MAX_NO_SPEECH_PROB = 0.6
+# The English words that help Whisper hear a Portuguese question: the most recent ones, and only
+# short ones, so the prompt stays a Portuguese sentence.
+MAX_HINTS = 20
+MAX_HINT_WORDS = 3
 VAD_PARAMS = VADParams(stop_secs=SILENCE_AFTER_SPEECH_S)
 
 
@@ -97,6 +101,23 @@ def pick_language(
     return "en" if scores.get("en", 0.0) > scores.get("pt", 0.0) else "pt"
 
 
+def portuguese_prompt(english_words: Iterable[str]) -> str | None:
+    """A Portuguese sentence that names the English words of the conversation, if there are any.
+
+    English words said inside Portuguese come out mangled: "since" became "SimCe". Naming them
+    helps, but only inside a Portuguese sentence. As a bare list of English phrases, through
+    Whisper's hotwords, they made Whisper translate the whole question into English.
+    """
+    short = [words for words in english_words if len(words.split()) <= MAX_HINT_WORDS]
+    recent = list(dict.fromkeys(reversed(short)))[:MAX_HINTS]
+    if not recent:
+        return None
+    # In the order they came up, so the latest are nearest the question. The other way round,
+    # Whisper heard "since e for" as "Cincy e Four".
+    words = ", ".join(reversed(recent))
+    return f"Aluno brasileiro estudando inglês, usando palavras como {words}."
+
+
 def transcribe(
     whisper: Any,
     audio: np.ndarray,
@@ -107,16 +128,13 @@ def transcribe(
 ) -> Heard:
     """What the student said. Blocks while Whisper runs, so call it from a thread."""
     lang = pick_language(whisper, audio, spoken_language, last_language)
-    # English words said inside Portuguese come out mangled ("since" became "SimCe" in the
-    # spike). The English words of the conversation so far help Whisper hear them.
-    hotwords = " ".join(english_words) if lang == "pt" else ""
     segments, _ = whisper.transcribe(
         audio,
         language=lang,
         beam_size=1,
         vad_filter=True,
         condition_on_previous_text=False,
-        hotwords=hotwords or None,
+        initial_prompt=portuguese_prompt(english_words) if lang == "pt" else None,
     )
     text = " ".join(
         segment.text.strip() for segment in segments if segment.no_speech_prob <= MAX_NO_SPEECH_PROB
