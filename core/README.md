@@ -1,6 +1,6 @@
 # professor-core
 
-The Python side of Professor Agent. It talks to the student's AI provider and streams the teacher's answers to the desktop app over a WebSocket on `localhost`. Voice (speech-to-text and text-to-speech) comes in phase 3.
+The Python side of Professor Agent. It talks to the student's AI provider, hears spoken questions and speaks the answers on this computer, and streams everything to the desktop app over a WebSocket on `localhost`.
 
 ## How it works
 
