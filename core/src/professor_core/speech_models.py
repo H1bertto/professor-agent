@@ -18,9 +18,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 from loguru import logger
 
-from professor_core.protocol import VoiceStatus
+from professor_core.protocol import MICROPHONE_SAMPLE_RATE, VoiceStatus
 
 VoiceState = Literal["off", "downloading", "loading", "ready", "unavailable", "error"]
 
@@ -212,7 +213,25 @@ def load_models(folder: Path) -> SpeechModels:
     # int8 weights with float16 math: 1.1 GB of GPU memory, 0.25 s per sentence in the spike.
     whisper = WhisperModel(str(folder / WHISPER_FOLDER), device="cuda", compute_type="int8_float16")
     kokoro = Kokoro(str(folder / KOKORO_MODEL), str(folder / KOKORO_VOICES))
-    return SpeechModels(whisper=whisper, kokoro=kokoro)
+    models = SpeechModels(whisper=whisper, kokoro=kokoro)
+    warm_up(models)
+    return models
+
+
+def warm_up(models: SpeechModels) -> None:
+    """Runs each model once while voice still says it is loading.
+
+    The first Whisper run on the GPU took a second longer than the ones after it, which made the
+    first question of the day the slowest.
+    """
+    from professor_core.speaking import KOKORO_LANGUAGES, TEACHER_VOICE
+
+    quiet = np.zeros(MICROPHONE_SAMPLE_RATE, dtype=np.float32)
+    segments, _ = models.whisper.transcribe(quiet, language="pt", beam_size=1, vad_filter=False)
+    # The segments are lazy, so the model runs while they are read.
+    for _ in segments:
+        pass
+    models.kokoro.create("Oi.", voice=TEACHER_VOICE, lang=KOKORO_LANGUAGES["pt"])
 
 
 StatusListener = Callable[[VoiceStatus], Awaitable[None]]

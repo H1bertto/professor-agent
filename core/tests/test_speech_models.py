@@ -6,6 +6,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from voice_fakes import FakeKokoro, FakeWhisper
 
 from professor_core.protocol import VoiceStatus
 from professor_core.speech_models import (
@@ -17,6 +18,7 @@ from professor_core.speech_models import (
     download_models,
     missing_files,
     models_folder,
+    warm_up,
 )
 
 
@@ -175,3 +177,11 @@ async def test_reports_a_failed_download_and_tries_again(tmp_path: Path) -> None
     engine.start()
     await engine.wait()
     assert len(attempts) == 2
+
+
+def test_warms_up_both_models_once() -> None:
+    whisper, kokoro = FakeWhisper(), FakeKokoro()
+    warm_up(SpeechModels(whisper=whisper, kokoro=kokoro))
+
+    assert len(whisper.calls) == 1
+    assert [call["voice"] for call in kokoro.calls] == ["pf_dora"]
