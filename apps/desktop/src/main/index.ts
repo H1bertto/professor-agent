@@ -160,6 +160,8 @@ async function start(): Promise<void> {
     }
   })
   const talk = (): void => {
+    // Tells, while developing, whether the hotkey reached the app at all.
+    if (!app.isPackaged) console.log(`Talk hotkey, answer ${tutor.current?.status ?? 'none'}`)
     // The bubble shows only beside a visible avatar.
     if (!overlay.isVisible()) {
       overlay.showInactive()
