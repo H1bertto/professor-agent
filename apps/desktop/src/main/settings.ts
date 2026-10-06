@@ -33,7 +33,9 @@ export const DEFAULT_VOICE: VoiceConfig = {
   enabled: false,
   speakAnswers: true,
   spokenLanguage: 'auto',
-  englishVoice: 'teacher'
+  englishVoice: 'teacher',
+  teacherVoice: 'dora',
+  nativeVoice: 'heart'
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,7 +59,10 @@ export function parseSettings(raw: unknown): Settings {
     overlayBounds: parseRect(raw.overlayBounds),
     provider: parseProvider(raw.provider),
     persona: parsePersona(raw.persona),
-    voice: parseVoiceConfig(raw.voice) ?? { ...DEFAULT_VOICE }
+    // Settings saved before a voice field existed take its default and keep the rest.
+    voice: parseVoiceConfig(isRecord(raw.voice) ? { ...DEFAULT_VOICE, ...raw.voice } : null) ?? {
+      ...DEFAULT_VOICE
+    }
   }
 }
 

@@ -94,7 +94,12 @@ async def test_reports_the_voice_status_while_voice_is_on(
     pipeline = session._conversation
 
     voice_on = VoiceConfig(
-        enabled=True, speak_answers=True, spoken_language="auto", english_voice="teacher"
+        enabled=True,
+        speak_answers=True,
+        spoken_language="auto",
+        english_voice="teacher",
+        teacher_voice="dora",
+        native_voice="heart",
     )
     await session.handle(configure(fake_provider).model_copy(update={"voice": voice_on}))
     await engine.wait()
@@ -108,7 +113,12 @@ async def test_reports_the_voice_status_while_voice_is_on(
 
 
 VOICE_ON = VoiceConfig(
-    enabled=True, speak_answers=False, spoken_language="auto", english_voice="teacher"
+    enabled=True,
+    speak_answers=False,
+    spoken_language="auto",
+    english_voice="teacher",
+    teacher_voice="dora",
+    native_voice="heart",
 )
 
 

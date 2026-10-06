@@ -1,10 +1,10 @@
-# Core protocol, version 2
+# Core protocol, version 3
 
 The desktop app and the Python core talk over a WebSocket on `ws://127.0.0.1:8765/ws`. Text frames carry JSON messages, each with a `type` field and camelCase field names. Binary frames carry audio.
 
 Example messages live in [`protocol/fixtures`](../protocol/fixtures). The Python and TypeScript test suites both check them, so a change to the protocol must update the fixtures, the Python models ([`core/src/professor_core/protocol.py`](../core/src/professor_core/protocol.py)), and the TypeScript types ([`apps/desktop/src/shared/core-protocol.ts`](../apps/desktop/src/shared/core-protocol.ts)) together.
 
-Version 2 adds voice: audio frames, the `voice` settings in `configure`, listening, and speech. A version 1 desktop cannot talk to a version 2 core.
+Version 2 added voice: audio frames, the `voice` settings in `configure`, listening, and speech. Version 3 adds conversation mode, where the core finds each turn by itself, and the choice of voices. The desktop and the core must speak the same version.
 
 ## Security
 
@@ -23,7 +23,9 @@ Version 2 adds voice: audio frames, the `voice` settings in `configure`, listeni
 5. With `speakAnswers` on, the answer also comes as speech: `speech.start`, then for each part a `speech.segment` followed by its speech frames, and one `speech.end`.
 6. Only one response runs at a time. A new question cancels the running one, which ends with `response.end` and reason `cancelled`. `response.cancel` does the same without a new question, and also stops a listening in progress.
 
-Responses, listening, and speech all use the id of the question that started them: the `user.text` id, or the `listen.start` id.
+7. In conversation mode the microphone stays open, see [Conversation mode](#conversation-mode).
+
+Responses, listening, and speech all use the id of the question that started them: the `user.text` id, the `listen.start` id, or the `turn.start` id.
 
 ## Audio frames
 
@@ -31,10 +33,10 @@ Every binary frame starts with one byte for its kind, followed by 16-bit little-
 
 | First byte | Direction | Sample rate | Content |
 |---|---|---|---|
-| `0x01` | desktop to core | 16 kHz | Microphone audio for the listening in progress |
+| `0x01` | desktop to core | 16 kHz | Microphone audio for the listening in progress, or all the time in conversation mode |
 | `0x02` | core to desktop | `sampleRate` of `speech.start` | Speech for the answer in progress |
 
-Frames carry no id. Microphone frames belong to the listening between `listen.start` and `listen.end`. Speech frames belong to the `speech.segment` sent before them. When the desktop cancels an answer, it drops the speech frames still arriving for it.
+Frames carry no id. Microphone frames belong to the listening between `listen.start` and `listen.end`, or to the conversation between `conversation.start` and `conversation.stop`. Speech frames belong to the `speech.segment` sent before them. When the desktop cancels an answer, it drops the speech frames still arriving for it.
 
 ## Desktop to core
 
@@ -47,23 +49,29 @@ Frames carry no id. Microphone frames belong to the listening between `listen.st
 | `listen.start` | `id` | The student started a spoken question. Microphone frames follow |
 | `listen.stop` | `id` | The student finished speaking, for example by pressing the hotkey again |
 | `response.cancel` | `id` | Stops the listening or the response for this id |
+| `conversation.start` | | Starts conversation mode: microphone frames follow without a listening id |
+| `conversation.stop` | | Ends conversation mode, for example when the student pauses it |
+| `speech.heard` | `id`, `parts` | How many parts of this answer's speech the student has started to hear |
 
 `provider` is `{ kind, baseUrl, model, apiKey }`. `kind` is `anthropic` or `openai-compatible`. `baseUrl` is required for `openai-compatible`. For `anthropic` it is usually `null`, which means the official API. It must use `https`, or `http` on localhost.
 
 `persona` is `{ name, instructions }`. `instructions` adds to the built-in teacher prompt.
 
-`voice` is `{ enabled, speakAnswers, spokenLanguage, englishVoice }`:
+`voice` is `{ enabled, speakAnswers, spokenLanguage, englishVoice, teacherVoice, nativeVoice }`:
 
 - `enabled` loads the speech models and allows spoken questions.
 - `speakAnswers` also speaks the answers, including answers to typed questions.
 - `spokenLanguage` is `auto`, `pt`, or `en`: the language the student speaks. `auto` detects it, choosing only between Portuguese and English.
-- `englishVoice` is `teacher` (the teacher's own voice says English words with English pronunciation) or `native` (a native English voice says them).
+- `englishVoice` is `teacher` (the teacher's own voice says English words with English pronunciation) or `native` (a native English voice says English phrases and sentences).
+- `teacherVoice` is `dora` or `alex`, the teacher's Portuguese voice.
+- `nativeVoice` is `heart`, `bella`, `michael`, `fenrir`, `puck`, or `adam`, the native English voice.
 
 ## Core to desktop
 
 | Type | Fields | Purpose |
 |---|---|---|
 | `ready` | `protocol`, `core` | The session is open. `core` is the core version |
+| `turn.start` | `id` | In conversation mode, the student started speaking. The id names the question that follows |
 | `voice.status` | `state`, `progress`, `message` | Where the speech models are: `off`, `downloading`, `loading`, `ready`, `unavailable`, or `error`. `progress` goes from 0 to 1 while downloading, and is `null` otherwise |
 | `listen.end` | `id`, `reason` | The core stopped listening: `silence`, `stopped`, `too_long`, or `cancelled` |
 | `transcript` | `id`, `text`, `lang` | What the student said, and in which language (`pt` or `en`) |
@@ -87,6 +95,13 @@ In `turn.metrics`:
 - `firstTextMs` is the time from the question to the first words of the model;
 - `firstAudioMs` is the time from the first words to the first speech frame;
 - `totalMs` is the time from the end of the question to the first speech frame, or to the first words when the answer is not spoken.
+
+## Conversation mode
+
+1. The desktop sends `conversation.start` and keeps sending microphone frames, until `conversation.stop`.
+2. When the student starts speaking, the core sends `turn.start` with a new id. When the student finishes, it sends `listen.end`, then the `transcript` and the answer, as for a question asked with the hotkey.
+3. A turn without words, such as a cough or keys, ends with an `error` coded `no_speech`. In conversation mode the desktop shows nothing for it.
+4. While the desktop plays an answer, it sends `speech.heard` each time a part starts. If the student starts speaking during the answer, the desktop pauses it at `turn.start`. When the turn turns out to be a question, the core cancels the answer, keeps in the history only the parts the student heard, and answers the new question. The cancelled answer ends with `response.end` and `speech.end`, reason `cancelled`, and the desktop drops the paused speech. When the turn has no words, the desktop resumes the answer where it stopped.
 
 ## Text segments and emotions
 

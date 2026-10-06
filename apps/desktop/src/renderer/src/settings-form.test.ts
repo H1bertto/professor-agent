@@ -14,7 +14,14 @@ import {
 const EMPTY: SettingsView = {
   provider: null,
   persona: { name: 'Professor', instructions: '' },
-  voice: { enabled: false, speakAnswers: true, spokenLanguage: 'auto', englishVoice: 'teacher' },
+  voice: {
+    enabled: false,
+    speakAnswers: true,
+    spokenLanguage: 'auto',
+    englishVoice: 'teacher',
+    teacherVoice: 'dora',
+    nativeVoice: 'heart'
+  },
   keyStorageAvailable: true
 }
 

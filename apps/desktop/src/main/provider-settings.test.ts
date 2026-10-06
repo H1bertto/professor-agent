@@ -97,7 +97,9 @@ describe('checkSettingsForm', () => {
       enabled: true,
       speakAnswers: true,
       spokenLanguage: 'auto',
-      englishVoice: 'teacher'
+      englishVoice: 'teacher',
+      teacherVoice: 'dora',
+      nativeVoice: 'heart'
     }
     expect(checkSettingsForm({ provider: null, persona: PERSONA, voice })).toEqual({
       ok: true,

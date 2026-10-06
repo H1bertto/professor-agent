@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from pydantic.alias_generators import to_camel
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 Emotion = Literal["neutral", "happy", "sad", "angry", "surprised", "relaxed"]
 EMOTIONS: tuple[Emotion, ...] = ("neutral", "happy", "sad", "angry", "surprised", "relaxed")
@@ -118,15 +118,26 @@ class Hello(Message):
     token: str | None = Field(default=None, max_length=256, repr=False)
 
 
+TeacherVoice = Literal["dora", "alex"]
+NativeVoice = Literal["heart", "bella", "michael", "fenrir", "puck", "adam"]
+
+
 class VoiceConfig(Message):
     enabled: bool
     speak_answers: bool
     spoken_language: Literal["auto", "pt", "en"]
     english_voice: Literal["teacher", "native"]
+    teacher_voice: TeacherVoice
+    native_voice: NativeVoice
 
 
 VOICE_OFF = VoiceConfig(
-    enabled=False, speak_answers=False, spoken_language="auto", english_voice="teacher"
+    enabled=False,
+    speak_answers=False,
+    spoken_language="auto",
+    english_voice="teacher",
+    teacher_voice="dora",
+    native_voice="heart",
 )
 
 
@@ -164,8 +175,35 @@ class ResponseCancel(Message):
     id: MessageId
 
 
+class ConversationStart(Message):
+    """Conversation mode: the microphone stays open, and the core finds each turn by itself."""
+
+    type: Literal["conversation.start"] = "conversation.start"
+
+
+class ConversationStop(Message):
+    type: Literal["conversation.stop"] = "conversation.stop"
+
+
+class SpeechHeard(Message):
+    """How many parts of an answer's speech the student has started to hear."""
+
+    type: Literal["speech.heard"] = "speech.heard"
+    id: MessageId
+    parts: int = Field(ge=0)
+
+
 ClientMessage = Annotated[
-    Hello | Configure | ProviderTest | UserText | ListenStart | ListenStop | ResponseCancel,
+    Hello
+    | Configure
+    | ProviderTest
+    | UserText
+    | ListenStart
+    | ListenStop
+    | ResponseCancel
+    | ConversationStart
+    | ConversationStop
+    | SpeechHeard,
     Field(discriminator="type"),
 ]
 client_messages: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
@@ -231,6 +269,13 @@ class VoiceStatus(Message):
     message: str | None = None
 
 
+class TurnStart(Message):
+    """In conversation mode, the student started speaking. The id names the question."""
+
+    type: Literal["turn.start"] = "turn.start"
+    id: MessageId
+
+
 class ListenEnd(Message):
     type: Literal["listen.end"] = "listen.end"
     id: MessageId
@@ -277,6 +322,7 @@ class TurnMetrics(Message):
 CoreMessage = Annotated[
     Ready
     | VoiceStatus
+    | TurnStart
     | ListenEnd
     | Transcript
     | ResponseStart

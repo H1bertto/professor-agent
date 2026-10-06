@@ -20,7 +20,9 @@ export function devVoiceOverride(env = process.env): VoiceConfig | null {
     enabled: true,
     speakAnswers: true,
     spokenLanguage: 'auto',
-    englishVoice: voice === 'native' ? 'native' : 'teacher'
+    englishVoice: voice === 'native' ? 'native' : 'teacher',
+    teacherVoice: 'dora',
+    nativeVoice: 'heart'
   }
 }
 

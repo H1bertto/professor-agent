@@ -8,15 +8,17 @@ from starlette.websockets import WebSocketDisconnect
 
 from professor_core.app import create_app
 from professor_core.connection import token_matches
-from professor_core.protocol import AudioKind, encode_audio
+from professor_core.protocol import PROTOCOL_VERSION, AudioKind, encode_audio
 
-HELLO = {"type": "hello", "protocol": 2, "client": "test", "token": None}
+HELLO = {"type": "hello", "protocol": PROTOCOL_VERSION, "client": "test", "token": None}
 PERSONA = {"name": "Professor", "instructions": ""}
 VOICE_OFF = {
     "enabled": False,
     "speakAnswers": False,
     "spokenLanguage": "auto",
     "englishVoice": "teacher",
+    "teacherVoice": "dora",
+    "nativeVoice": "heart",
 }
 
 

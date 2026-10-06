@@ -15,7 +15,14 @@ const VALID = {
   overlayBounds: { x: 10, y: 20, width: 300, height: 400 },
   provider: PROVIDER,
   persona: { name: 'Ana', instructions: 'Correct my grammar.' },
-  voice: { enabled: true, speakAnswers: false, spokenLanguage: 'en', englishVoice: 'native' }
+  voice: {
+    enabled: true,
+    speakAnswers: false,
+    spokenLanguage: 'en',
+    englishVoice: 'native',
+    teacherVoice: 'alex',
+    nativeVoice: 'puck'
+  }
 }
 
 describe('parseSettings', () => {
@@ -40,6 +47,20 @@ describe('parseSettings', () => {
       expect(parseSettings({ ...VALID, voice }).voice).toEqual(DEFAULT_VOICE)
     }
     expect(DEFAULT_VOICE.enabled).toBe(false)
+  })
+
+  it('keeps the saved voice settings when a newer voice field is missing', () => {
+    const older = {
+      enabled: true,
+      speakAnswers: false,
+      spokenLanguage: 'en',
+      englishVoice: 'native'
+    }
+    expect(parseSettings({ ...VALID, voice: older }).voice).toEqual({
+      ...older,
+      teacherVoice: DEFAULT_VOICE.teacherVoice,
+      nativeVoice: DEFAULT_VOICE.nativeVoice
+    })
   })
 
   it('falls back to the default avatar when the avatar is invalid', () => {
