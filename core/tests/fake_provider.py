@@ -146,18 +146,21 @@ class FakeProvider:
 
             hang = _last_question(body) == HANG_QUESTION
 
+            def chunk(delta: dict[str, str], finish_reason: str | None) -> str:
+                data = {
+                    "id": "fake",
+                    "object": "chat.completion.chunk",
+                    "created": 0,
+                    "model": body["model"],
+                    "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+                }
+                return f"data: {json.dumps(data)}\n\n"
+
             async def stream() -> AsyncIterator[str]:
                 async for word in _words(body["model"], hang=hang):
-                    chunk = {
-                        "id": "fake",
-                        "object": "chat.completion.chunk",
-                        "created": 0,
-                        "model": body["model"],
-                        "choices": [
-                            {"index": 0, "delta": {"content": word}, "finish_reason": None}
-                        ],
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                    yield chunk({"content": word}, None)
+                # Like OpenAI, the last chunk says why the answer ended.
+                yield chunk({}, "stop")
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(stream(), media_type="text/event-stream")

@@ -92,6 +92,7 @@ class Conversation:
         history_limit: int = HISTORY_LIMIT,
         first_text_timeout_s: float = FIRST_TEXT_TIMEOUT_S,
     ) -> None:
+        self._llm = llm
         self._on_event = on_event
         self._history_limit = history_limit
         self._first_text_timeout_s = first_text_timeout_s
@@ -124,6 +125,11 @@ class Conversation:
     def alive(self) -> bool:
         """False once the pipeline has stopped, after which it can no longer answer."""
         return self._runner is not None and not self._runner.done()
+
+    @property
+    def last_ending(self) -> Any:
+        """How the provider ended the last answer, when the service tells."""
+        return getattr(self._llm, "last_ending", None)
 
     @property
     def history(self) -> list[Any]:

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from fake_provider import EMPTY_MODEL, FakeProvider
+from loguru import logger
 from voice_fakes import FakeKokoro, ScriptedDetector, chunk, ready_engine, types
 
 from professor_core.protocol import (
@@ -320,10 +321,18 @@ async def test_says_so_when_the_answer_comes_back_empty(fake_provider: FakeProvi
     await session.handle(empty)
     await session.handle(UserText(id="q1", text="since vs for?"))
 
-    answer = await outbox.answer("q1")
+    warnings: list[str] = []
+    sink = logger.add(lambda message: warnings.append(str(message)), level="WARNING")
+    try:
+        answer = await outbox.answer("q1")
+    finally:
+        logger.remove(sink)
     errors = [m for m in answer if m.type == "error"]  # type: ignore[attr-defined]
     assert [e.code for e in errors] == ["provider_unavailable"]  # type: ignore[attr-defined]
     assert "empty" in errors[0].message  # type: ignore[attr-defined]
+    # The log tells what came back, never the text itself.
+    [warning] = [w for w in warnings if "came back empty" in w]
+    assert "8 characters of text and tags, finish reason stop" in warning
     assert answer[-1] == ResponseEnd(id="q1", reason="error")
     await session.close()
 

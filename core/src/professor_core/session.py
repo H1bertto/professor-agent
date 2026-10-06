@@ -126,6 +126,8 @@ class Session:
         self._conversation: Conversation | None = None
         self._parsers: dict[str, MarkupParser] = {}
         self._answer_pieces: dict[str, list[TextPiece]] = {}
+        # How much text each answer brought from the provider, before the markup is taken out.
+        self._answer_chars: dict[str, int] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         # The desktop starts from "off", so only changes are worth sending.
         self._reported_voice = VoiceStatus(state="off")
@@ -363,6 +365,7 @@ class Session:
             clock = self._clocks.get(event.id)
             if clock and clock.first_text_at is None and event.text.strip():
                 clock.first_text_at = asyncio.get_running_loop().time()
+            self._answer_chars[event.id] = self._answer_chars.get(event.id, 0) + len(event.text)
             await self._send_markup(event.id, self._parsers[event.id].feed(event.text))
         elif isinstance(event, ResponseFinished):
             await self._end(event.id, event.reason)
@@ -410,10 +413,16 @@ class Session:
         await self._start(response_id)
         await self._send_markup(response_id, self._parsers.pop(response_id).finish())
         pieces = self._answer_pieces.pop(response_id, [])
+        chars = self._answer_chars.pop(response_id, 0)
         if reason == "complete" and not any(piece.text.strip() for piece in pieces):
             # A provider can end an answer without a word. Saying nothing would leave the
             # student looking at the question, waiting for an answer that never comes.
-            logger.warning(f"Answer {response_id} came back empty from the provider")
+            ending = self._conversation.last_ending if self._conversation else None
+            how = f", {ending.describe()}" if ending else ""
+            logger.warning(
+                f"Answer {response_id} came back empty from the provider "
+                f"({chars} characters of text and tags{how})"
+            )
             await self._send(
                 ErrorMessage(
                     id=response_id, code="provider_unavailable", message=EMPTY_ANSWER_MESSAGE
