@@ -17,8 +17,9 @@ from professor_core.protocol import ErrorCode, ProviderConfig
 
 REQUEST_TIMEOUT_S = 30.0
 LIST_MODELS_TIMEOUT_S = 15.0
-# One quick retry covers a dropped connection. More would keep the student waiting.
-CHAT_MAX_RETRIES = 1
+# Retries cover a dropped connection and a busy provider. The free Gemini tier answered half the
+# requests with 503 for minutes at a time, and a few seconds of waiting beat an error.
+CHAT_MAX_RETRIES = 3
 GEMINI_HOST = "generativelanguage.googleapis.com"
 
 # Answers stream, so a generous output cap costs nothing and never cuts an answer short.
@@ -117,10 +118,17 @@ def _report_empty_answer(ending: AnswerEnding) -> None:
 class TutorOpenAILLMService(OpenAILLMService):
     """Pipecat's OpenAI service, with request timeouts and an HTTP client that gets closed."""
 
+    # How the last answer's stream ended, to explain an answer that came back empty.
+    last_ending: AnswerEnding | None = None
+
     async def get_chat_completions(self, context: Any) -> Any:
         # Some answers come back without a word. The log then tells why, without the text.
         stream = await super().get_chat_completions(context)
-        return _WatchedStream(stream, _report_empty_answer)
+        return _WatchedStream(stream, self._ended)
+
+    def _ended(self, ending: AnswerEnding) -> None:
+        self.last_ending = ending
+        _report_empty_answer(ending)
 
     def create_client(
         self,
