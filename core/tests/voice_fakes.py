@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from pipecat.audio.turn.base_turn_analyzer import EndOfTurnState
 from pipecat.audio.vad.vad_analyzer import VADParams, VADState
 
 from professor_core.speech_models import SpeechModels, VoiceEngine
@@ -36,10 +37,14 @@ class FakeWhisper:
 
 
 class ScriptedDetector:
-    """Says the student speaks for the first `speaking` chunks, then that they are quiet."""
+    """Says the student speaks for the first `speaking` chunks, then that they are quiet.
 
-    def __init__(self, speaking: int = 3) -> None:
+    With `script`, it gives those states in order instead, and repeats the last one.
+    """
+
+    def __init__(self, speaking: int = 3, script: list[VADState] | None = None) -> None:
         self.speaking = speaking
+        self.script = script
         self.resets = 0
         self._chunks = 0
 
@@ -49,7 +54,40 @@ class ScriptedDetector:
 
     async def analyze_audio(self, buffer: bytes) -> VADState:
         self._chunks += 1
+        if self.script is not None:
+            return self.script[min(self._chunks, len(self.script)) - 1]
         return VADState.SPEAKING if self._chunks <= self.speaking else VADState.QUIET
+
+
+class FakeJudge:
+    """Smart Turn stand-in: it says the student finished at each pause when `finished`, and
+    ends the turn after `max_silence` quiet chunks in a row."""
+
+    def __init__(self, finished: bool = True, max_silence: int = 1_000) -> None:
+        self.finished = finished
+        self.max_silence = max_silence
+        self.pauses = 0
+        self.speech_chunks = 0
+        self._silence = 0
+
+    def clear(self) -> None:
+        self._silence = 0
+        self.speech_chunks = 0
+
+    def append_audio(self, buffer: bytes, is_speech: bool) -> EndOfTurnState:
+        if is_speech:
+            self.speech_chunks += 1
+            self._silence = 0
+            return EndOfTurnState.INCOMPLETE
+        self._silence += 1
+        if self.speech_chunks and self._silence >= self.max_silence:
+            return EndOfTurnState.COMPLETE
+        return EndOfTurnState.INCOMPLETE
+
+    async def analyze_end_of_turn(self) -> tuple[EndOfTurnState, None]:
+        self.pauses += 1
+        verdict = EndOfTurnState.COMPLETE if self.finished else EndOfTurnState.INCOMPLETE
+        return verdict, None
 
 
 class FakeTokenizer:

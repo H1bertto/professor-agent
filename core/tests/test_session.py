@@ -7,11 +7,22 @@ from typing import Any
 import pytest
 from fake_provider import EMPTY_MODEL, FakeProvider
 from loguru import logger
-from voice_fakes import FakeKokoro, ScriptedDetector, chunk, ready_engine, types
+from pipecat.audio.vad.vad_analyzer import VADState
+from voice_fakes import (
+    FakeJudge,
+    FakeKokoro,
+    FakeWhisper,
+    ScriptedDetector,
+    chunk,
+    ready_engine,
+    types,
+)
 
 from professor_core.protocol import (
     VOICE_OFF,
     Configure,
+    ConversationStart,
+    ConversationStop,
     ListenEnd,
     ListenStart,
     ListenStop,
@@ -44,6 +55,7 @@ async def close_sessions() -> AsyncIterator[None]:
 
 
 def new_session(send: Any, **options: Any) -> Session:
+    options.setdefault("judge_factory", FakeJudge)
     session = Session(send, **options)
     OPEN_SESSIONS.append(session)
     return session
@@ -364,6 +376,85 @@ async def test_speaks_with_the_voices_in_the_settings(
 
     await outbox.until("q1", "speech.end")
     assert {call["voice"] for call in kokoro.calls} == {"pm_alex"}
+    await session.close()
+
+
+QUIET, SPEAKING = VADState.QUIET, VADState.SPEAKING
+
+
+async def conversation_session(
+    fake: FakeProvider, folder: Path, script: list[VADState], whisper: FakeWhisper | None = None
+) -> tuple[Session, Outbox]:
+    engine = await ready_engine(folder, whisper=whisper)
+    outbox = Outbox()
+    detector = ScriptedDetector(script=script)
+    session = new_session(outbox, voice=engine, detector_factory=lambda: detector)
+    await session.handle(configure(fake).model_copy(update={"voice": VOICE_ON}))
+    await session.handle(ConversationStart())
+    return session, outbox
+
+
+async def test_conversation_mode_finds_a_turn_and_answers_it(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    script = [QUIET] * 5 + [SPEAKING] * 3 + [QUIET]
+    session, outbox = await conversation_session(fake_provider, tmp_path, script)
+    for _ in range(5):
+        await session.handle_audio(chunk())
+    assert not [m for m in outbox.messages if m.type == "turn.start"]  # type: ignore[attr-defined]
+
+    for _ in range(4):
+        await session.handle_audio(chunk())
+    [turn] = [m for m in outbox.messages if m.type == "turn.start"]  # type: ignore[attr-defined]
+    answer = await outbox.answer(turn.id)  # type: ignore[attr-defined]
+
+    assert types(answer)[:4] == ["turn.start", "listen.end", "transcript", "response.start"]
+    assert ResponseEnd(id=turn.id, reason="complete") in answer  # type: ignore[attr-defined]
+    metrics = (await outbox.until(turn.id, "turn.metrics"))[-1]  # type: ignore[attr-defined]
+    # The turn keeps the quiet audio just before the student spoke.
+    assert metrics.listened_ms > 4 * 32  # type: ignore[attr-defined]
+    await session.close()
+
+
+async def test_a_turn_without_words_ends_quietly_as_no_speech(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    script = [SPEAKING] * 2 + [QUIET]
+    session, outbox = await conversation_session(
+        fake_provider, tmp_path, script, whisper=FakeWhisper(text="")
+    )
+    for _ in range(3):
+        await session.handle_audio(chunk())
+    [turn] = [m for m in outbox.messages if m.type == "turn.start"]  # type: ignore[attr-defined]
+
+    sent = await outbox.until(turn.id, "error")  # type: ignore[attr-defined]
+    assert types(sent) == ["turn.start", "listen.end", "error"]
+    assert sent[-1].code == "no_speech"  # type: ignore[attr-defined]
+    await session.close()
+
+
+async def test_stopping_conversation_mode_cancels_the_turn_in_progress(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    session, outbox = await conversation_session(fake_provider, tmp_path, [SPEAKING])
+    await session.handle_audio(chunk())
+    [turn] = [m for m in outbox.messages if m.type == "turn.start"]  # type: ignore[attr-defined]
+    await session.handle(ConversationStop())
+    await session.handle_audio(chunk())
+
+    assert outbox.messages[-1] == ListenEnd(id=turn.id, reason="cancelled")  # type: ignore[attr-defined]
+    assert [m.type for m in outbox.messages].count("turn.start") == 1  # type: ignore[attr-defined]
+    await session.close()
+
+
+async def test_conversation_mode_needs_voice(fake_provider: FakeProvider) -> None:
+    outbox = Outbox()
+    session = new_session(outbox)
+    await session.handle(configure(fake_provider))
+    await session.handle(ConversationStart())
+
+    assert outbox.messages[-1].code == "voice_unavailable"  # type: ignore[attr-defined]
+    assert outbox.messages[-1].id is None  # type: ignore[attr-defined]
     await session.close()
 
 
