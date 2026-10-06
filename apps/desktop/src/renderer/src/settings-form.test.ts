@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { SettingsView, VoiceStatusView } from '../../shared/api'
 import {
+  hotkeyLabel,
   initialForm,
   modelWarning,
   savedKeyApplies,
@@ -21,6 +22,12 @@ const EMPTY: SettingsView = {
     englishVoice: 'teacher',
     teacherVoice: 'dora',
     nativeVoice: 'heart'
+  },
+  talk: {
+    mode: 'hotkey',
+    hotkey: 'CommandOrControl+`',
+    hotkeyLabel: "Ctrl + '",
+    autoPauseMinutes: 3
   },
   keyStorageAvailable: true
 }
@@ -112,5 +119,22 @@ describe('voice settings', () => {
     expect(voiceStatusLine(status('downloading', 0.42), on)?.text).toContain('(42%)')
     expect(voiceStatusLine(status('ready'), on)).toEqual({ text: 'Voice is ready.', kind: 'ok' })
     expect(voiceStatusLine(status('error'), on)).toEqual({ text: 'No GPU.', kind: 'error' })
+  })
+})
+
+describe('talk settings', () => {
+  it('sends the talk settings with the rest of the form', () => {
+    const form = initialForm(EMPTY)
+    const talk = { ...form.talk, mode: 'conversation' as const, autoPauseMinutes: 5 }
+    expect(toSettingsForm({ ...form, talk }).talk).toEqual(talk)
+  })
+
+  it('shows a recorded shortcut the way the keyboard shows it', () => {
+    const held = { keyCode: 192, ctrlKey: true, altKey: false, shiftKey: false, metaKey: false }
+    expect(hotkeyLabel({ ...held, key: "'" })).toBe("Ctrl + '")
+    expect(hotkeyLabel({ ...held, keyCode: 32, altKey: true, ctrlKey: false, key: ' ' })).toBe(
+      'Alt + Space'
+    )
+    expect(hotkeyLabel({ ...held, ctrlKey: false, keyCode: 119, key: 'F8' })).toBe('F8')
   })
 })

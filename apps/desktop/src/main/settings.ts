@@ -1,5 +1,8 @@
 import { AVATAR_ID_PATTERN, type AvatarChoice } from '../shared/avatar'
+import type { TalkSettings } from '../shared/api'
 import { parseVoiceConfig, type PersonaConfig, type VoiceConfig } from '../shared/core-protocol'
+import { DEFAULT_TALK_HOTKEY, DEFAULT_TALK_HOTKEY_LABEL } from '../shared/hotkeys'
+import { parseTalkSettings } from './provider-settings'
 import {
   DEFAULT_PERSONA,
   findPreset,
@@ -26,6 +29,14 @@ export interface Settings {
   provider: StoredProvider | null
   persona: PersonaConfig
   voice: VoiceConfig
+  talk: TalkSettings
+}
+
+export const DEFAULT_TALK: TalkSettings = {
+  mode: 'hotkey',
+  hotkey: DEFAULT_TALK_HOTKEY,
+  hotkeyLabel: DEFAULT_TALK_HOTKEY_LABEL,
+  autoPauseMinutes: 3
 }
 
 /** Voice starts off, since it downloads about 2 GB of speech models the first time. */
@@ -44,7 +55,8 @@ export const DEFAULT_SETTINGS: Settings = {
   overlayBounds: null,
   provider: null,
   persona: DEFAULT_PERSONA,
-  voice: DEFAULT_VOICE
+  voice: DEFAULT_VOICE,
+  talk: DEFAULT_TALK
 }
 
 // Encrypted keys are a little longer than the keys themselves, in base64.
@@ -62,6 +74,9 @@ export function parseSettings(raw: unknown): Settings {
     // Settings saved before a voice field existed take its default and keep the rest.
     voice: parseVoiceConfig(isRecord(raw.voice) ? { ...DEFAULT_VOICE, ...raw.voice } : null) ?? {
       ...DEFAULT_VOICE
+    },
+    talk: parseTalkSettings(isRecord(raw.talk) ? { ...DEFAULT_TALK, ...raw.talk } : null) ?? {
+      ...DEFAULT_TALK
     }
   }
 }

@@ -109,10 +109,23 @@ export interface ProviderView {
   keyHint: string | null
 }
 
+/** How the student talks to the teacher. These settings stay in the desktop app. */
+export interface TalkSettings {
+  /** `hotkey`: press it for each question. `conversation`: the microphone stays on. */
+  mode: 'hotkey' | 'conversation'
+  /** An Electron accelerator, such as CommandOrControl+` for Ctrl and the key below Esc. */
+  hotkey: string
+  /** How the hotkey looks on the student's keyboard, such as Ctrl + '. */
+  hotkeyLabel: string
+  /** Conversation mode pauses after this many minutes without speech. 0 never pauses. */
+  autoPauseMinutes: number
+}
+
 export interface SettingsView {
   provider: ProviderView | null
   persona: PersonaConfig
   voice: VoiceConfig
+  talk: TalkSettings
   /** Whether the system can encrypt API keys. Without it, keys cannot be saved. */
   keyStorageAvailable: boolean
 }
@@ -133,6 +146,8 @@ export interface SettingsForm {
   persona: PersonaConfig
   /** Leave it out to keep the saved voice settings. */
   voice?: VoiceConfig
+  /** Leave it out to keep the saved talk settings. */
+  talk?: TalkSettings
 }
 
 export type SaveResult = { ok: true; settings: SettingsView } | { ok: false; message: string }
@@ -167,6 +182,7 @@ export const IpcChannel = {
   overlayMicrophoneFailed: 'overlay:microphone-failed',
   overlaySpeech: 'overlay:speech',
   overlaySpeechReport: 'overlay:speech-report',
+  overlayConversation: 'overlay:conversation',
   askOpened: 'ask:opened',
   askSubmit: 'ask:submit',
   askClose: 'ask:close',
@@ -202,6 +218,8 @@ export interface OverlayApi {
   microphoneFailed(message: string): void
   onSpeech(listener: (command: SpeechCommand) => void): () => void
   reportSpeech(report: SpeechReport): void
+  /** Conversation mode changed, to show when the microphone is open. */
+  onConversation(listener: (view: ConversationView) => void): () => void
 }
 
 /** Calls available to the question box. */

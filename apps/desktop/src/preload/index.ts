@@ -35,7 +35,8 @@ const api: ProfessorApi = {
     sendMicrophoneAudio: (pcm) => ipcRenderer.send(IpcChannel.overlayMicrophoneAudio, pcm),
     microphoneFailed: (message) => ipcRenderer.send(IpcChannel.overlayMicrophoneFailed, message),
     onSpeech: (listener) => subscribe(IpcChannel.overlaySpeech, listener),
-    reportSpeech: (report) => ipcRenderer.send(IpcChannel.overlaySpeechReport, report)
+    reportSpeech: (report) => ipcRenderer.send(IpcChannel.overlaySpeechReport, report),
+    onConversation: (listener) => subscribe(IpcChannel.overlayConversation, listener)
   },
   ask: {
     ask: (text) => ipcRenderer.invoke(IpcChannel.askSubmit, text),

@@ -1,7 +1,8 @@
 // Checks what the settings window sends before the main process uses it. The window is our own
 // page, but anything that crosses IPC is treated as untrusted.
 
-import type { ProviderForm, SettingsForm } from '../shared/api'
+import type { ProviderForm, SettingsForm, TalkSettings } from '../shared/api'
+import { isTalkHotkey } from '../shared/hotkeys'
 import { parseVoiceConfig, type PersonaConfig, type VoiceConfig } from '../shared/core-protocol'
 import { findPreset, isSafeBaseUrl, LIMITS } from '../shared/providers'
 
@@ -56,6 +57,28 @@ export function checkPersona(raw: unknown): Checked<PersonaConfig> {
   return { ok: true, value: { name, instructions } }
 }
 
+const MAX_HOTKEY_LABEL = 60
+const MAX_AUTO_PAUSE_MINUTES = 60
+
+/** Talk settings from untrusted data, or `null` when they do not match. */
+export function parseTalkSettings(raw: unknown): TalkSettings | null {
+  if (!isRecord(raw)) return null
+  const { mode, hotkey, hotkeyLabel, autoPauseMinutes } = raw
+  if (mode !== 'hotkey' && mode !== 'conversation') return null
+  if (!isTalkHotkey(hotkey)) return null
+  if (typeof hotkeyLabel !== 'string' || !hotkeyLabel.trim()) return null
+  if (hotkeyLabel.length > MAX_HOTKEY_LABEL) return null
+  if (!Number.isInteger(autoPauseMinutes)) return null
+  const minutes = autoPauseMinutes as number
+  if (minutes < 0 || minutes > MAX_AUTO_PAUSE_MINUTES) return null
+  return { mode, hotkey, hotkeyLabel: hotkeyLabel.trim(), autoPauseMinutes: minutes }
+}
+
+export function checkTalk(raw: unknown): Checked<TalkSettings> {
+  const talk = parseTalkSettings(raw)
+  return talk ? { ok: true, value: talk } : fail('The talk settings could not be read.')
+}
+
 export function checkVoice(raw: unknown): Checked<VoiceConfig> {
   const voice = parseVoiceConfig(raw)
   return voice ? { ok: true, value: voice } : fail('The voice settings could not be read.')
@@ -72,7 +95,13 @@ export function checkSettingsForm(raw: unknown): Checked<SettingsForm> {
     if (!checked.ok) return checked
     voice = checked.value
   }
-  const withVoice = voice ? { voice } : {}
+  let talk: TalkSettings | undefined
+  if (raw.talk !== undefined) {
+    const checked = checkTalk(raw.talk)
+    if (!checked.ok) return checked
+    talk = checked.value
+  }
+  const withVoice = { ...(voice ? { voice } : {}), ...(talk ? { talk } : {}) }
   if (raw.provider === null) {
     return { ok: true, value: { provider: null, persona: persona.value, ...withVoice } }
   }

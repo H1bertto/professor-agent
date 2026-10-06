@@ -29,6 +29,21 @@
       body.dragging #stage {
         cursor: grabbing;
       }
+      /* The microphone is open in conversation mode. */
+      .mic {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 10px;
+        height: 10px;
+        border: 2px solid rgba(255, 255, 255, 0.85);
+        border-radius: 50%;
+        background: #cf222e;
+        pointer-events: none;
+      }
+      .mic[hidden] {
+        display: none;
+      }
       .error {
         margin: 12px;
         padding: 8px 12px;
@@ -44,6 +59,7 @@
 
   <body>
     <div id="stage"></div>
+    <div id="mic" class="mic" hidden title="The teacher is listening"></div>
     <script type="module" src="/src/overlay/main.ts"></script>
   </body>
 </html>

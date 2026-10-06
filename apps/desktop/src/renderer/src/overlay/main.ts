@@ -156,6 +156,8 @@ async function main(): Promise<void> {
   startInteraction()
   overlay.onSpeech((command) => speech.handle(command))
   overlay.onMicrophone((on) => microphone.set(on))
+  const micBadge = document.getElementById('mic') as HTMLDivElement
+  overlay.onConversation((view) => (micBadge.hidden = !view.listening))
   overlay.onAvatarChanged((config) => {
     showAvatar(config).catch((error) => console.error('Could not switch avatars', error))
   })

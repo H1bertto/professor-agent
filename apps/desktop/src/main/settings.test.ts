@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_SETTINGS, DEFAULT_VOICE, parseSettings } from './settings'
+import { DEFAULT_SETTINGS, DEFAULT_TALK, DEFAULT_VOICE, parseSettings } from './settings'
 
 const PROVIDER = {
   preset: 'anthropic',
@@ -22,6 +22,12 @@ const VALID = {
     englishVoice: 'native',
     teacherVoice: 'alex',
     nativeVoice: 'puck'
+  },
+  talk: {
+    mode: 'conversation',
+    hotkey: 'Alt+Space',
+    hotkeyLabel: 'Alt + Space',
+    autoPauseMinutes: 10
   }
 }
 
@@ -61,6 +67,18 @@ describe('parseSettings', () => {
       teacherVoice: DEFAULT_VOICE.teacherVoice,
       nativeVoice: DEFAULT_VOICE.nativeVoice
     })
+  })
+
+  it('falls back to the default talk settings, field by field', () => {
+    expect(parseSettings({ ...VALID, talk: undefined }).talk).toEqual(DEFAULT_TALK)
+    expect(parseSettings({ ...VALID, talk: { mode: 'conversation' } }).talk).toEqual({
+      ...DEFAULT_TALK,
+      mode: 'conversation'
+    })
+    expect(parseSettings({ ...VALID, talk: { ...VALID.talk, hotkey: 'T' } }).talk).toEqual(
+      DEFAULT_TALK
+    )
+    expect(DEFAULT_TALK.mode).toBe('hotkey')
   })
 
   it('falls back to the default avatar when the avatar is invalid', () => {

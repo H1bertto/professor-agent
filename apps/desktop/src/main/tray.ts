@@ -1,15 +1,11 @@
 import { Menu, nativeImage, Tray, type MenuItemConstructorOptions } from 'electron'
 import icon from '../../resources/icon.png?asset'
+import type { ConversationView } from '../shared/api'
 import { EMOTIONS, type AvatarChoice, type Emotion } from '../shared/avatar'
 import type { AvatarOption } from './avatar-library'
 
 export const TOGGLE_OVERLAY_SHORTCUT = 'CommandOrControl+Alt+P'
 export const ASK_SHORTCUT = 'CommandOrControl+Alt+Space'
-/**
- * The key below Esc, which types ' on the Brazilian ABNT2 layout and ` on the US layout.
- * Electron names keys by the US layout.
- */
-export const TALK_SHORTCUT = 'CommandOrControl+Shift+`'
 
 export interface TrayState {
   overlayVisible: boolean
@@ -17,13 +13,18 @@ export interface TrayState {
   currentAvatarId: string
   emotion: Emotion
   talking: boolean
+  /** The talk hotkey as the student's keyboard shows it. */
+  talkLabel: string
+  conversation: ConversationView
 }
 
 export interface TrayActions {
   state(): TrayState
   ask(): void
-  /** Starts a spoken question, or ends the one being heard. */
+  /** Starts a spoken question, or ends the one being heard. In conversation mode it pauses or
+   * resumes the listening. */
   talk(): void
+  toggleConversation(): void
   toggleOverlay(): void
   selectAvatar(choice: AvatarChoice): void
   importVrm(): void
@@ -67,7 +68,13 @@ function menu(actions: TrayActions, refresh: () => void): MenuItemConstructorOpt
 
   return [
     { label: 'Ask a question...', accelerator: ASK_SHORTCUT, click: actions.ask },
-    { label: 'Talk to the teacher', accelerator: TALK_SHORTCUT, click: actions.talk },
+    { label: `${talkLabel(state)} (${state.talkLabel})`, click: after(actions.talk) },
+    {
+      label: 'Conversation mode',
+      type: 'checkbox',
+      checked: state.conversation.on,
+      click: after(actions.toggleConversation)
+    },
     {
       label: state.overlayVisible ? 'Hide avatar' : 'Show avatar',
       accelerator: TOGGLE_OVERLAY_SHORTCUT,
@@ -102,4 +109,9 @@ function menu(actions: TrayActions, refresh: () => void): MenuItemConstructorOpt
     { label: 'Settings and credits...', click: actions.showSettings },
     { label: 'Quit', click: actions.quit }
   ]
+}
+
+function talkLabel({ conversation }: TrayState): string {
+  if (!conversation.on) return 'Talk to the teacher'
+  return conversation.listening ? 'Pause listening' : 'Resume listening'
 }
