@@ -11,7 +11,8 @@ import {
   devAvatarOverride,
   devProviderOverride,
   scheduleDevAsk,
-  scheduleOverlayCapture
+  scheduleOverlayCapture,
+  applyDevProfile
 } from './debug-capture'
 import {
   devConversationRequested,
@@ -35,6 +36,7 @@ import { guardPermissions, registerVoiceChannels } from './voice-channels'
 import { clampToWorkArea, defaultOverlayBounds, overlaySize, type Rect } from './window-bounds'
 
 registerAvatarScheme()
+applyDevProfile()
 
 // A second copy of the app would put a second avatar on the screen.
 if (!app.requestSingleInstanceLock()) {
