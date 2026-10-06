@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fake_provider import EMPTY_MODEL, FakeProvider
+from fake_provider import EMPTY_MODEL, SLOW_MODEL, FakeProvider
 from loguru import logger
 from pipecat.audio.vad.vad_analyzer import VADState
 from voice_fakes import (
@@ -32,6 +32,7 @@ from professor_core.protocol import (
     ResponseCancel,
     ResponseEnd,
     SpeechEnd,
+    SpeechHeard,
     Transcript,
     UserText,
     VoiceConfig,
@@ -455,6 +456,101 @@ async def test_conversation_mode_needs_voice(fake_provider: FakeProvider) -> Non
 
     assert outbox.messages[-1].code == "voice_unavailable"  # type: ignore[attr-defined]
     assert outbox.messages[-1].id is None  # type: ignore[attr-defined]
+    await session.close()
+
+
+def assistant_history(fake: FakeProvider) -> list[str]:
+    request = fake.last_request("/v1/chat/completions")
+    return [m["content"] for m in request.body["messages"] if m["role"] == "assistant"]
+
+
+async def test_the_history_keeps_only_what_the_student_heard(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    session, outbox, kokoro = await speaking_behind_the_text(fake_provider, tmp_path)
+    await session.handle(SpeechHeard(id="q1", parts=1, finished=False))
+    await session.handle(ResponseCancel(id="q1"))
+    kokoro.release.set()
+    await session.handle(UserText(id="q2", text="E o for?"))
+    await outbox.answer("q2")
+
+    assert assistant_history(fake_provider) == ["Boa pergunta! [interrupted]"]
+    await session.close()
+
+
+async def test_an_answer_heard_to_the_end_stays_whole(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    session, outbox, kokoro = await speaking_behind_the_text(fake_provider, tmp_path)
+    await session.handle(SpeechHeard(id="q1", parts=1, finished=True))
+    await session.handle(ResponseCancel(id="q1"))
+    kokoro.release.set()
+    await session.handle(UserText(id="q2", text="E o for?"))
+    await outbox.answer("q2")
+
+    [answer] = assistant_history(fake_provider)
+    assert "ponto de partida" in answer and "[interrupted]" not in answer
+    await session.close()
+
+
+async def test_cutting_off_an_answer_while_its_text_streams(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    engine = await ready_engine(tmp_path, kokoro=FakeKokoro())
+    outbox = Outbox()
+
+    async def send_audio(frame: bytes) -> None:
+        pass
+
+    session = new_session(outbox, send_audio=send_audio, voice=engine)
+    message = configure(fake_provider)
+    assert message.provider is not None
+    slow = message.provider.model_copy(update={"model": SLOW_MODEL})
+    speaking = VOICE_ON.model_copy(update={"speak_answers": True})
+    await session.handle(message.model_copy(update={"provider": slow, "voice": speaking}))
+    await session.handle(UserText(id="q1", text="since vs for?"))
+    await outbox.until("q1", "speech.segment")
+    await session.handle(SpeechHeard(id="q1", parts=1, finished=False))
+    await session.handle(ResponseCancel(id="q1"))
+    await session.handle(UserText(id="q2", text="E o for?"))
+    await outbox.answer("q2")
+
+    assert assistant_history(fake_provider) == ["Boa pergunta! [interrupted]"]
+    await session.close()
+
+
+async def test_speaking_over_the_teacher_in_conversation_mode(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    kokoro = FakeKokoro(hold_from=1)
+    engine = await ready_engine(tmp_path, kokoro=kokoro)
+    outbox = Outbox()
+
+    async def send_audio(frame: bytes) -> None:
+        pass
+
+    detector = ScriptedDetector(script=[SPEAKING] * 3 + [QUIET])
+    session = new_session(
+        outbox, send_audio=send_audio, voice=engine, detector_factory=lambda: detector
+    )
+    speaking = VOICE_ON.model_copy(update={"speak_answers": True})
+    await session.handle(configure(fake_provider).model_copy(update={"voice": speaking}))
+    await session.handle(UserText(id="q1", text="since vs for?"))
+    await outbox.until("q1", "speech.segment")
+    await outbox.answer("q1")
+    await session.handle(SpeechHeard(id="q1", parts=1, finished=False))
+
+    await session.handle(ConversationStart())
+    for _ in range(4):
+        await session.handle_audio(chunk())
+    [turn] = [m for m in outbox.messages if m.type == "turn.start"]  # type: ignore[attr-defined]
+    # The teacher goes on speaking until the turn turns out to be a question.
+    await outbox.until(turn.id, "transcript")  # type: ignore[attr-defined]
+    kokoro.release.set()
+
+    assert SpeechEnd(id="q1", reason="cancelled") in await outbox.until("q1", "speech.end")
+    await outbox.answer(turn.id)  # type: ignore[attr-defined]
+    assert assistant_history(fake_provider) == ["Boa pergunta! [interrupted]"]
     await session.close()
 
 

@@ -21,7 +21,7 @@ Version 2 added voice: audio frames, the `voice` settings in `configure`, listen
 3. A typed question is a `user.text`. The core answers with `response.start`, any number of `response.delta` and `response.emotion`, and one `response.end`.
 4. A spoken question starts with `listen.start` and microphone frames. The core stops listening when the student is silent, when the desktop sends `listen.stop`, or after a time limit, and says so with `listen.end`. It then sends the `transcript` and answers like a typed question.
 5. With `speakAnswers` on, the answer also comes as speech: `speech.start`, then for each part a `speech.segment` followed by its speech frames, and one `speech.end`.
-6. Only one response runs at a time. A new question cancels the running one, which ends with `response.end` and reason `cancelled`. `response.cancel` does the same without a new question, and also stops a listening in progress.
+6. Only one response runs at a time. A new question cancels the running one, which ends with `response.end` and reason `cancelled`. `response.cancel` does the same without a new question, and also stops a listening in progress. When the student cuts off a spoken answer, the core keeps in the history only the parts that `speech.heard` reported.
 
 7. In conversation mode the microphone stays open, see [Conversation mode](#conversation-mode).
 
@@ -51,7 +51,7 @@ Frames carry no id. Microphone frames belong to the listening between `listen.st
 | `response.cancel` | `id` | Stops the listening or the response for this id |
 | `conversation.start` | | Starts conversation mode: microphone frames follow without a listening id |
 | `conversation.stop` | | Ends conversation mode, for example when the student pauses it |
-| `speech.heard` | `id`, `parts` | How many parts of this answer's speech the student has started to hear |
+| `speech.heard` | `id`, `parts`, `finished` | How many parts of this answer's speech the student has started to hear, and whether all of it has played |
 
 `provider` is `{ kind, baseUrl, model, apiKey }`. `kind` is `anthropic` or `openai-compatible`. `baseUrl` is required for `openai-compatible`. For `anthropic` it is usually `null`, which means the official API. It must use `https`, or `http` on localhost.
 
@@ -101,7 +101,7 @@ In `turn.metrics`:
 1. The desktop sends `conversation.start` and keeps sending microphone frames, until `conversation.stop`.
 2. When the student starts speaking, the core sends `turn.start` with a new id. When the student finishes, it sends `listen.end`, then the `transcript` and the answer, as for a question asked with the hotkey.
 3. A turn without words, such as a cough or keys, ends with an `error` coded `no_speech`. In conversation mode the desktop shows nothing for it.
-4. While the desktop plays an answer, it sends `speech.heard` each time a part starts. If the student starts speaking during the answer, the desktop pauses it at `turn.start`. When the turn turns out to be a question, the core cancels the answer, keeps in the history only the parts the student heard, and answers the new question. The cancelled answer ends with `response.end` and `speech.end`, reason `cancelled`, and the desktop drops the paused speech. When the turn has no words, the desktop resumes the answer where it stopped.
+4. While the desktop plays an answer, it sends `speech.heard` each time a part starts, and once more with `finished` when the last part has played. If the student starts speaking during the answer, the desktop pauses it at `turn.start`. When the turn turns out to be a question, the core cancels the answer, keeps in the history only the parts the student heard, and answers the new question. The cancelled answer ends with `response.end` and `speech.end`, reason `cancelled`, and the desktop drops the paused speech. When the turn has no words, the desktop resumes the answer where it stopped.
 
 ## Text segments and emotions
 

@@ -141,8 +141,10 @@ class Session:
         # Conversation mode: the open microphone, and the ids of the turns found on it.
         self._watch: ConversationWatch | None = None
         self._turns: set[str] = set()
-        # How many parts of each answer's speech the student has started to hear.
-        self._heard_parts: dict[str, int] = {}
+        # What the desktop reported hearing of each answer, and the speakers of recent answers.
+        self._heard: dict[str, SpeechHeard] = {}
+        self._spoken: dict[str, Speaker] = {}
+        self._latest_answer: str | None = None
         self._configuration: Configure | None = None
         self._conversation: Conversation | None = None
         self._parsers: dict[str, MarkupParser] = {}
@@ -181,7 +183,7 @@ class Session:
         elif isinstance(message, ConversationStop):
             await self._conversation_stop()
         elif isinstance(message, SpeechHeard):
-            self._heard_parts[message.id] = message.parts
+            self._heard[message.id] = message
 
     async def handle_audio(self, pcm: bytes) -> None:
         """Microphone audio for the listening in progress, or for the open microphone."""
@@ -308,10 +310,13 @@ class Session:
         )
         await self._send(Transcript(id=listening.id, text=heard.text, lang=heard.lang))
         # A spoken question interrupts the teacher, even speech that runs after the text.
+        if self._latest_answer is not None:
+            self._keep_only_heard(self._latest_answer)
         self._hush()
         await self._ask(UserText(id=listening.id, text=heard.text), language=heard.lang)
 
     async def _cancel(self, question_id: str) -> None:
+        self._keep_only_heard(question_id)
         if speaker := self._speaking_after_text.pop(question_id, None):
             speaker.stop()
             return
@@ -447,8 +452,18 @@ class Session:
             await self._send(ErrorMessage(id=event.id, code=code, message=text))
             await self._end(event.id, "error")
 
+    def _keep_only_heard(self, answer_id: str) -> None:
+        """When the student cut off a spoken answer, the history keeps only what they heard."""
+        speaker = self._spoken.get(answer_id)
+        report = self._heard.get(answer_id)
+        if speaker is None or self._conversation is None or (report and report.finished):
+            return
+        heard = speaker.parts[: report.parts if report else 0]
+        self._conversation.keep_only_heard(answer_id, " ".join(part.strip() for part in heard))
+
     async def _start(self, response_id: str) -> None:
         if response_id not in self._parsers:
+            self._latest_answer = response_id
             self._parsers[response_id] = MarkupParser()
             await self._send(ResponseStart(id=response_id))
             self._start_speaking(response_id)
@@ -459,7 +474,7 @@ class Session:
         voice = self._configuration.voice if self._configuration else None
         if not (voice and voice.enabled and voice.speak_answers and kokoro and self._send_audio):
             return
-        self._speakers[response_id] = Speaker(
+        speaker = self._speakers[response_id] = Speaker(
             response_id,
             kokoro,
             main_language=language,
@@ -468,6 +483,11 @@ class Session:
             send=self._send,
             send_audio=self._send_audio,
         )
+        self._spoken[response_id] = speaker
+        # Only the latest answers can still be cut off.
+        for old_id in list(self._spoken)[:-4]:
+            self._spoken.pop(old_id)
+            self._heard.pop(old_id, None)
 
     def _typed_language(self, text: str) -> SpokenLanguage:
         spoken = self._configuration.voice.spoken_language if self._configuration else "auto"

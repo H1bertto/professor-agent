@@ -186,11 +186,13 @@ class ConversationStop(Message):
 
 
 class SpeechHeard(Message):
-    """How many parts of an answer's speech the student has started to hear."""
+    """How many parts of an answer's speech the student has started to hear, and whether the
+    whole speech has played."""
 
     type: Literal["speech.heard"] = "speech.heard"
     id: MessageId
     parts: int = Field(ge=0)
+    finished: bool
 
 
 ClientMessage = Annotated[

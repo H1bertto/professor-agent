@@ -77,8 +77,9 @@ export type ClientMessage =
   /** Conversation mode: the microphone stays open, and the core finds each turn by itself. */
   | { type: 'conversation.start' }
   | { type: 'conversation.stop' }
-  /** How many parts of an answer's speech the student has started to hear. */
-  | { type: 'speech.heard'; id: string; parts: number }
+  /** How many parts of an answer's speech the student has started to hear, and whether the
+   * whole speech has played. */
+  | { type: 'speech.heard'; id: string; parts: number; finished: boolean }
 
 export const CORE_ERROR_CODES = [
   'invalid_key',

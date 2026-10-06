@@ -94,7 +94,7 @@ describe('client messages', () => {
     },
     'conversation.start.json': { type: 'conversation.start' },
     'conversation.stop.json': { type: 'conversation.stop' },
-    'speech.heard.json': { type: 'speech.heard', id: 'voice-1', parts: 2 },
+    'speech.heard.json': { type: 'speech.heard', id: 'voice-1', parts: 2, finished: false },
     'listen.start.json': { type: 'listen.start', id: 'voice-1' },
     'listen.stop.json': { type: 'listen.stop', id: 'voice-1' },
     'provider.test.json': {

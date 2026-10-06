@@ -254,6 +254,8 @@ class Speaker:
         self._sentences: asyncio.Queue[list[Piece] | None] = asyncio.Queue()
         self._started = False
         self._next_index = 0
+        # The text of each part sent so far, in order, which is what the student can hear.
+        self.parts: list[str] = []
         self._stop_reason: StopReason = "cancelled"
         self.first_audio_at: float | None = None
         self._task = asyncio.create_task(self._speak())
@@ -299,6 +301,7 @@ class Speaker:
         if not self._started:
             self._started = True
             await self._send(SpeechStart(id=self._id, sample_rate=SPEECH_SAMPLE_RATE))
+        self.parts.append(part.text)
         await self._send(
             SpeechSegment(id=self._id, index=self._next_index, text=part.text, lang=part.lang)
         )
