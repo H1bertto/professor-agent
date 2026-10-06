@@ -1,4 +1,5 @@
 import asyncio
+import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -141,6 +142,27 @@ async def test_hears_a_spoken_question_and_answers_it(
     assert metrics.listened_ms == round(4 * 0.032 * 1000)  # type: ignore[attr-defined]
     assert metrics.transcribe_ms is not None  # type: ignore[attr-defined]
     assert metrics.first_audio_ms is None, "this answer is not spoken"  # type: ignore[attr-defined]
+    await session.close()
+
+
+async def test_saves_each_question_while_developing(
+    fake_provider: FakeProvider, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "turns"
+    monkeypatch.setenv("PROFESSOR_CORE_RECORD_TURNS", str(folder))
+    session, outbox = await listening_session(fake_provider, tmp_path)
+    await session.handle(ListenStart(id="v1"))
+    for _ in range(4):
+        await session.handle_audio(chunk())
+    await outbox.answer("v1")
+
+    async with asyncio.timeout(5):
+        while not list(folder.glob("*.wav")):
+            await asyncio.sleep(0.02)
+    [saved] = list(folder.glob("*.wav"))
+    assert saved.name.endswith("-silence.wav")
+    with wave.open(str(saved)) as file:
+        assert (file.getframerate(), file.getnframes()) == (16_000, 4 * 512)
     await session.close()
 
 

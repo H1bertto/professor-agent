@@ -47,6 +47,7 @@ from professor_core.protocol import (
 from professor_core.providers import create_llm_service, describe_provider_error, list_models
 from professor_core.speaking import SendAudio, Speaker, guess_language
 from professor_core.speech_models import VoiceEngine
+from professor_core.turn_recording import recordings_folder, save_turn
 
 Send = Callable[[CoreMessage], Awaitable[None]]
 PROVIDER_TEST_TIMEOUT_S = 20.0
@@ -188,6 +189,8 @@ class Session:
         await self._send(ListenEnd(id=listening.id, reason=reason))
         if reason == "cancelled":
             return
+        if folder := recordings_folder():
+            self._in_background(asyncio.to_thread(save_turn, folder, listening.audio(), reason))
         if not listening.heard_speech:
             await self._send(
                 ErrorMessage(id=listening.id, code="no_speech", message=NO_SPEECH_MESSAGE)
