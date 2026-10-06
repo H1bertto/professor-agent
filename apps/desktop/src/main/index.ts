@@ -142,6 +142,7 @@ async function start(): Promise<void> {
       speechRecorder?.handle(command)
       sendToOverlay(IpcChannel.overlaySpeech, command)
     },
+    conversation: () => tray.refresh(),
     voiceStatus: (status) => {
       sendToSettingsWindow(IpcChannel.voiceStatusChanged, status)
       if (devTalkPending && status.state === 'ready') {

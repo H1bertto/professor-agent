@@ -44,6 +44,12 @@ describe('bubble view', () => {
     })
     expect(statusLine(answer())).toBeNull()
   })
+
+  it('shows a notice in a calm tone, as finished', () => {
+    const notice = answer({ status: 'notice', error: 'Listening paused.' })
+    expect(statusLine(notice)).toEqual({ text: 'Listening paused.', kind: 'note' })
+    expect(isFinished(notice)).toBe(true)
+  })
 })
 
 describe('subtitles', () => {

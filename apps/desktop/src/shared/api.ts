@@ -38,7 +38,14 @@ export interface AvatarPose {
 }
 
 export type AnswerStatus =
-  'listening' | 'waiting' | 'streaming' | 'complete' | 'cancelled' | 'error'
+  | 'listening'
+  | 'waiting'
+  | 'streaming'
+  | 'complete'
+  | 'cancelled'
+  | 'error'
+  /** Not an answer: a note for the student, such as conversation mode pausing by itself. */
+  | 'notice'
 
 /** One question and the teacher's answer so far. */
 export interface Answer {
@@ -66,9 +73,23 @@ export type SpeechCommand =
   | { type: 'end' }
   /** Stop at once and drop what is queued, for example when the student interrupts. */
   | { type: 'stop' }
+  /** Hold the speech where it is, while the student may be starting to speak. */
+  | { type: 'pause' }
+  /** Go on from where `pause` held it. */
+  | { type: 'resume' }
 
 /** What the overlay tells the main process about the speech it plays. */
 export type SpeechReport = { type: 'segment'; index: number } | { type: 'finished' }
+
+/** Conversation mode as the tray and the overlay show it. */
+export interface ConversationView {
+  /** The student chose conversation mode in the settings. */
+  on: boolean
+  /** The student, or a long silence, paused the listening. */
+  paused: boolean
+  /** The microphone is open and the core is listening. */
+  listening: boolean
+}
 
 /** What the answer bubble shows. */
 export interface AnswerView {

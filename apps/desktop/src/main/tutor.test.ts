@@ -1,9 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Answer, AvatarPose, SpeechCommand, VoiceStatusView } from '../shared/api'
+import type {
+  Answer,
+  AvatarPose,
+  ConversationView,
+  SpeechCommand,
+  VoiceStatusView
+} from '../shared/api'
 import type { ClientMessage, CoreMessage } from '../shared/core-protocol'
 import { FakeCoreConnection } from './test-helpers'
-import { appendSegments, LISTEN_LIMIT_MS, SPEECH_GRACE_MS, Tutor } from './tutor'
+import {
+  appendSegments,
+  DEFAULT_AUTO_PAUSE_MS,
+  LISTEN_LIMIT_MS,
+  SPEECH_GRACE_MS,
+  Tutor
+} from './tutor'
 import { CORE_OFFLINE_MESSAGE } from './tutor-settings'
 
 let core: FakeCoreConnection
@@ -12,6 +24,7 @@ let poses: Partial<AvatarPose>[]
 let microphone: boolean[]
 let speech: SpeechCommand[]
 let voiceStatuses: VoiceStatusView[]
+let conversations: ConversationView[]
 let tutor: Tutor
 
 beforeEach(() => {
@@ -22,12 +35,14 @@ beforeEach(() => {
   microphone = []
   speech = []
   voiceStatuses = []
+  conversations = []
   tutor = new Tutor(core, {
     answer: (answer) => answers.push(answer),
     pose: (changes) => poses.push(changes),
     microphone: (on) => microphone.push(on),
     speech: (command) => speech.push(command),
-    voiceStatus: (status) => voiceStatuses.push(status)
+    voiceStatus: (status) => voiceStatuses.push(status),
+    conversation: (view) => conversations.push(view)
   })
 })
 
@@ -387,6 +402,142 @@ describe('Tutor voice', () => {
 
     expect(speech.at(-1)).toEqual({ type: 'stop' })
     expect(answers.at(-1)).toMatchObject({ status: 'error', speech: 'done' })
+  })
+})
+
+describe('Tutor conversation mode', () => {
+  function inConversation(): void {
+    core.emit(VOICE_READY)
+    tutor.setConversation(true)
+  }
+
+  it('opens the microphone once the core can listen, and sends it all the audio', () => {
+    tutor.setConversation(true)
+    expect(core.sent.filter((m) => m.type === 'conversation.start')).toEqual([])
+    expect(tutor.conversation).toEqual({ on: true, paused: false, listening: false })
+
+    core.emit(VOICE_READY)
+    expect(core.sent.at(-1)).toEqual({ type: 'conversation.start' })
+    expect(microphone).toEqual([true])
+    expect(conversations.at(-1)).toEqual({ on: true, paused: false, listening: true })
+
+    const pcm = new Uint8Array([1, 2])
+    tutor.hear(pcm)
+    expect(core.sentAudio).toEqual([pcm])
+  })
+
+  it('turns a turn into a question and answers it', () => {
+    inConversation()
+    core.emit({ type: 'turn.start', id: 't1' })
+    expect(poses.at(-1)).toEqual({ state: 'listening', talking: false })
+    expect(answers).toEqual([])
+
+    core.emit({ type: 'listen.end', id: 't1', reason: 'silence' })
+    expect(poses.at(-1)).toEqual({ state: 'thinking', talking: false })
+    core.emit({ type: 'transcript', id: 't1', text: 'Since or for?', lang: 'en' })
+    expect(answers.at(-1)).toMatchObject({ id: 't1', question: 'Since or for?', status: 'waiting' })
+
+    core.emit({ type: 'response.start', id: 't1' })
+    core.emit({ type: 'response.delta', id: 't1', segments: [{ text: 'Usamos', lang: null }] })
+    core.emit({ type: 'response.end', id: 't1', reason: 'complete' })
+    expect(answers.at(-1)).toMatchObject({ id: 't1', status: 'complete' })
+  })
+
+  it('holds the teacher while the student may be speaking, and goes on after a cough', () => {
+    inConversation()
+    const id = spokenAnswer()
+    core.emit({ type: 'turn.start', id: 't1' })
+    expect(speech.at(-1)).toEqual({ type: 'pause' })
+
+    core.emit({ type: 'listen.end', id: 't1', reason: 'silence' })
+    core.emit({ type: 'error', id: 't1', code: 'no_speech', message: 'Nothing.' })
+    expect(speech.at(-1)).toEqual({ type: 'resume' })
+    expect(answers.at(-1)).toMatchObject({ id, speech: 'playing' })
+    expect(poses.at(-1)).toEqual({ state: 'speaking', talking: false })
+  })
+
+  it('lets the student speak over the teacher with a new question', () => {
+    inConversation()
+    const id = spokenAnswer()
+    core.emit({ type: 'turn.start', id: 't1' })
+    core.emit({ type: 'listen.end', id: 't1', reason: 'silence' })
+    core.emit({ type: 'transcript', id: 't1', text: 'Wait, and for?', lang: 'en' })
+
+    expect(speech.at(-1)).toEqual({ type: 'stop' })
+    expect(answers.at(-1)).toMatchObject({ id: 't1', question: 'Wait, and for?' })
+    // The core cancels the old answer by itself, after it keeps only what was heard.
+    expect(core.sent).not.toContainEqual({ type: 'response.cancel', id })
+    core.emit({ type: 'response.end', id, reason: 'cancelled' })
+    expect(answers.at(-1)?.id).toBe('t1')
+  })
+
+  it('tells the core how much of each answer the student heard', () => {
+    const id = spokenAnswer()
+    tutor.speechReport({ type: 'segment', index: 0 })
+    expect(core.sent.at(-1)).toEqual({ type: 'speech.heard', id, parts: 1, finished: false })
+
+    core.emit({ type: 'speech.end', id, reason: 'complete' })
+    tutor.speechReport({ type: 'finished' })
+    expect(core.sent.at(-1)).toEqual({ type: 'speech.heard', id, parts: 1, finished: true })
+  })
+
+  it('pauses and resumes the listening with the hotkey', () => {
+    inConversation()
+    tutor.listen()
+    expect(core.sent.at(-1)).toEqual({ type: 'conversation.stop' })
+    expect(microphone).toEqual([true, false])
+    expect(tutor.conversation).toEqual({ on: true, paused: true, listening: false })
+
+    tutor.listen()
+    expect(core.sent.at(-1)).toEqual({ type: 'conversation.start' })
+    expect(tutor.conversation.listening).toBe(true)
+  })
+
+  it('pauses by itself after a long silence, but not while the teacher speaks', () => {
+    inConversation()
+    spokenAnswer()
+    vi.advanceTimersByTime(DEFAULT_AUTO_PAUSE_MS)
+    expect(tutor.conversation.listening).toBe(true)
+
+    tutor.cancel()
+    vi.advanceTimersByTime(DEFAULT_AUTO_PAUSE_MS)
+    expect(core.sent.at(-1)).toEqual({ type: 'conversation.stop' })
+    expect(answers.at(-1)).toMatchObject({ status: 'notice' })
+    expect(answers.at(-1)?.error).toContain('3 min')
+  })
+
+  it('never pauses by itself when the setting says so', () => {
+    core.emit(VOICE_READY)
+    tutor.setConversation(true, 0)
+    vi.advanceTimersByTime(60 * 60_000)
+    expect(tutor.conversation.listening).toBe(true)
+  })
+
+  it('starts again after the core comes back', () => {
+    inConversation()
+    core.setStatus('connecting')
+    expect(microphone).toEqual([true, false])
+    expect(tutor.conversation.listening).toBe(false)
+
+    core.setStatus('online')
+    core.emit(VOICE_READY)
+    expect(core.sent.filter((m) => m.type === 'conversation.start')).toHaveLength(2)
+    expect(microphone).toEqual([true, false, true])
+  })
+
+  it('pauses when the microphone cannot open', () => {
+    inConversation()
+    tutor.microphoneFailed('Allow the microphone.')
+    expect(tutor.conversation).toEqual({ on: true, paused: true, listening: false })
+    expect(answers.at(-1)).toMatchObject({ status: 'error', error: 'Allow the microphone.' })
+  })
+
+  it('closes the microphone when conversation mode is turned off', () => {
+    inConversation()
+    tutor.setConversation(false)
+    expect(core.sent.at(-1)).toEqual({ type: 'conversation.stop' })
+    expect(microphone).toEqual([true, false])
+    expect(tutor.conversation).toEqual({ on: false, paused: false, listening: false })
   })
 })
 

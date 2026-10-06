@@ -24,6 +24,9 @@ export class SpeechPlayer {
   private nextStart = 0
   private readonly sources = new Set<AudioBufferSourceNode>()
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
+  /** When each part starts, in audio context time, until it is reported. */
+  private marks: { time: number; index: number }[] = []
+  private paused = false
   /** A part that begins with the next audio frame. */
   private pendingSegment: number | null = null
   private active = false
@@ -56,6 +59,12 @@ export class SpeechPlayer {
         return
       case 'stop':
         this.stop()
+        return
+      case 'pause':
+        this.pause()
+        return
+      case 'resume':
+        this.resume()
         return
     }
   }
@@ -108,19 +117,47 @@ export class SpeechPlayer {
     this.sources.add(source)
     source.start(startAt)
     if (this.pendingSegment !== null) {
-      const index = this.pendingSegment
+      this.marks.push({ time: startAt, index: this.pendingSegment })
       this.pendingSegment = null
-      this.at(startAt, () => this.events.segment(index))
+      if (!this.paused) this.scheduleMarks()
     }
   }
 
-  private at(time: number, action: () => void): void {
-    const delayMs = Math.max(0, (time - (this.context?.currentTime ?? 0)) * 1000)
-    const timer = setTimeout(() => {
-      this.timers.delete(timer)
-      action()
-    }, delayMs)
-    this.timers.add(timer)
+  /** Reports each part when its audio starts. The audio clock stops while paused, so the timers
+   * are set again from it on every resume. */
+  private scheduleMarks(): void {
+    this.clearTimers()
+    const now = this.context?.currentTime ?? 0
+    for (const mark of this.marks) {
+      const timer = setTimeout(
+        () => {
+          this.timers.delete(timer)
+          this.marks = this.marks.filter((other) => other !== mark)
+          this.events.segment(mark.index)
+        },
+        Math.max(0, (mark.time - now) * 1000)
+      )
+      this.timers.add(timer)
+    }
+  }
+
+  private pause(): void {
+    if (!this.active || this.paused) return
+    this.paused = true
+    this.clearTimers()
+    void this.context?.suspend()
+  }
+
+  private resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    void this.context?.resume()
+    this.scheduleMarks()
+  }
+
+  private clearTimers(): void {
+    for (const timer of this.timers) clearTimeout(timer)
+    this.timers.clear()
   }
 
   private finishIfDone(): void {
@@ -140,8 +177,9 @@ export class SpeechPlayer {
   }
 
   private reset(): void {
-    for (const timer of this.timers) clearTimeout(timer)
-    this.timers.clear()
+    this.clearTimers()
+    this.marks = []
+    this.paused = false
     this.active = false
     this.ended = false
     this.pendingSegment = null

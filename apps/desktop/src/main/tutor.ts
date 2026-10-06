@@ -4,6 +4,7 @@ import type {
   AnswerStatus,
   AskResult,
   AvatarPose,
+  ConversationView,
   CoreConnectionStatus,
   SpeechCommand,
   SpeechReport,
@@ -29,6 +30,8 @@ export interface TutorEvents {
   speech(command: SpeechCommand): void
   /** The speech models changed state, for the settings window. */
   voiceStatus(status: VoiceStatusView): void
+  /** Conversation mode changed, for the tray and the overlay. */
+  conversation(view: ConversationView): void
 }
 
 type VoiceStatus = Extract<CoreMessage, { type: 'voice.status' }>
@@ -46,6 +49,8 @@ const WAIT_LIMIT_MS = 90_000
 export const LISTEN_LIMIT_MS = 35_000
 /** How long past the end of the audio the overlay may take to say it finished playing. */
 export const SPEECH_GRACE_MS = 5000
+/** Conversation mode pauses by itself after this long without the student speaking. */
+export const DEFAULT_AUTO_PAUSE_MS = 3 * 60_000
 const GENERIC_ERROR = 'Something went wrong. Try again.'
 const VOICE_OFF: VoiceStatus = { type: 'voice.status', state: 'off', progress: null, message: null }
 
@@ -74,6 +79,17 @@ export class Tutor {
   private waitTimer: ReturnType<typeof setTimeout> | undefined
   private listenTimer: ReturnType<typeof setTimeout> | undefined
   private speechTimer: ReturnType<typeof setTimeout> | undefined
+  /** The speech is held while the student may be starting a turn. */
+  private speechPaused = false
+  // Conversation mode: chosen in the settings, paused by the hotkey or a long silence, and
+  // started once the core can listen.
+  private conversationOn = false
+  private conversationPaused = false
+  private conversationStarted = false
+  private autoPauseMs = DEFAULT_AUTO_PAUSE_MS
+  private autoPauseTimer: ReturnType<typeof setTimeout> | undefined
+  /** Turns the core heard start, until each turns out to be a question or nothing. */
+  private readonly turns = new Set<string>()
   private readonly stopFollowingCore: (() => void)[]
 
   constructor(
@@ -101,6 +117,35 @@ export class Tutor {
     return { state, progress, message }
   }
 
+  get conversation(): ConversationView {
+    return {
+      on: this.conversationOn,
+      paused: this.conversationPaused,
+      listening: this.conversationStarted
+    }
+  }
+
+  /**
+   * Conversation mode, as the settings say: the microphone stays open and the core finds each
+   * turn. `autoPauseMs` of 0 never pauses by itself.
+   */
+  setConversation(on: boolean, autoPauseMs = DEFAULT_AUTO_PAUSE_MS): void {
+    this.autoPauseMs = autoPauseMs
+    if (on === this.conversationOn) {
+      this.restartAutoPause()
+      return
+    }
+    this.conversationOn = on
+    this.conversationPaused = false
+    if (on) {
+      if (this.answer?.status === 'listening') this.halt()
+      this.startConversation(false)
+    } else {
+      this.stopConversation()
+    }
+    this.emitConversation()
+  }
+
   ask(question: string): AskResult {
     const text = question.trim()
     if (!text) return { ok: false, message: 'Type a question first.' }
@@ -124,6 +169,10 @@ export class Tutor {
    * interrupts the teacher. Problems show in the bubble, since a hotkey has no box of its own.
    */
   listen(): void {
+    if (this.conversationOn) {
+      this.togglePause()
+      return
+    }
     if (this.answer?.status === 'listening') {
       this.stopListening(this.answer.id)
       return
@@ -148,10 +197,17 @@ export class Tutor {
 
   /** Microphone audio from the overlay, which goes to the core while a question is heard. */
   hear(pcm: Uint8Array): void {
-    if (this.answer?.status === 'listening' && this.microphoneOpen) this.core.sendAudio(pcm)
+    if (this.conversationStarted) this.core.sendAudio(pcm)
+    else if (this.answer?.status === 'listening' && this.microphoneOpen) this.core.sendAudio(pcm)
   }
 
   microphoneFailed(message: string): void {
+    if (this.conversationStarted) {
+      this.conversationPaused = true
+      this.stopConversation()
+      this.showProblem(message)
+      return
+    }
     const answer = this.answer
     if (answer?.status !== 'listening') return
     this.core.send({ type: 'response.cancel', id: answer.id })
@@ -165,12 +221,16 @@ export class Tutor {
     if (report.type === 'segment') {
       if (report.index < answer.speechParts.length && report.index !== answer.speakingIndex) {
         answer.speakingIndex = report.index
+        this.heard(answer.id, report.index + 1, false)
         this.publish()
       }
       return
     }
     // The overlay finishes only after `end`. Before that, a gap between sentences is not the end.
-    if (this.speech.ended) this.speechDone()
+    if (this.speech.ended) {
+      this.heard(answer.id, answer.speechParts.length, true)
+      this.speechDone()
+    }
   }
 
   /** Stops the answer and its speech, or the question being heard. */
@@ -181,7 +241,13 @@ export class Tutor {
   }
 
   dispose(): void {
-    for (const timer of [this.relaxTimer, this.waitTimer, this.listenTimer, this.speechTimer]) {
+    for (const timer of [
+      this.relaxTimer,
+      this.waitTimer,
+      this.listenTimer,
+      this.speechTimer,
+      this.autoPauseTimer
+    ]) {
       clearTimeout(timer)
     }
     for (const stop of this.stopFollowingCore) stop()
@@ -198,6 +264,153 @@ export class Tutor {
   private showProblem(message: string): void {
     this.answer = { ...newAnswer(randomUUID()), status: 'error', error: message }
     this.publish()
+  }
+
+  /** A note that is neither an answer nor a problem. */
+  private showNotice(message: string): void {
+    this.answer = { ...newAnswer(randomUUID()), status: 'notice', error: message }
+    this.publish()
+  }
+
+  /** Tells the core how much of an answer the student has heard, for its history. */
+  private heard(id: string, parts: number, finished: boolean): void {
+    this.core.send({ type: 'speech.heard', id, parts, finished })
+  }
+
+  private togglePause(): void {
+    if (this.conversationStarted) {
+      this.conversationPaused = true
+      this.stopConversation()
+    } else {
+      this.conversationPaused = false
+      this.startConversation(true)
+    }
+    this.emitConversation()
+  }
+
+  /** Opens the microphone for conversation mode once the core can listen. */
+  private startConversation(explain: boolean): void {
+    if (!this.conversationOn || this.conversationPaused || this.conversationStarted) return
+    const problem = this.cannotListen()
+    if (problem) {
+      if (explain) this.showProblem(problem)
+      return
+    }
+    if (!this.core.send({ type: 'conversation.start' })) return
+    this.conversationStarted = true
+    this.events.microphone(true)
+    this.restartAutoPause()
+    this.emitConversation()
+  }
+
+  private stopConversation(): void {
+    clearTimeout(this.autoPauseTimer)
+    for (const id of [...this.turns]) this.dropTurn(id)
+    if (!this.conversationStarted) return
+    this.conversationStarted = false
+    this.core.send({ type: 'conversation.stop' })
+    this.events.microphone(false)
+    this.emitConversation()
+  }
+
+  private restartAutoPause(): void {
+    clearTimeout(this.autoPauseTimer)
+    if (!this.conversationStarted || this.autoPauseMs <= 0) return
+    this.autoPauseTimer = setTimeout(() => this.autoPause(), this.autoPauseMs)
+  }
+
+  private autoPause(): void {
+    const answer = this.answer
+    const busy = this.turns.size > 0 || answer?.speech === 'playing'
+    if (busy || (answer && isRunning(answer.status))) {
+      this.restartAutoPause()
+      return
+    }
+    this.conversationPaused = true
+    this.stopConversation()
+    this.emitConversation()
+    const minutes = Math.round(this.autoPauseMs / 60_000)
+    this.showNotice(
+      `Listening paused after ${minutes} min without speech. Press the talk hotkey to go on.`
+    )
+  }
+
+  private emitConversation(): void {
+    this.events.conversation(this.conversation)
+  }
+
+  /** The student started speaking in conversation mode. A spoken answer holds until it is clear
+   * whether this is a question. */
+  private startTurn(id: string): void {
+    if (!this.conversationStarted) return
+    this.turns.add(id)
+    if (this.answer?.speech === 'playing' && !this.speechPaused) {
+      this.speechPaused = true
+      clearTimeout(this.speechTimer)
+      this.events.speech({ type: 'pause' })
+    }
+    this.events.pose({ state: 'listening', talking: false })
+    this.restartAutoPause()
+  }
+
+  private receiveTurn(id: string, message: CoreMessage): void {
+    switch (message.type) {
+      case 'listen.end':
+        if (message.reason === 'cancelled') this.dropTurn(id)
+        else this.events.pose({ state: 'thinking', talking: false })
+        return
+      case 'transcript':
+        this.turns.delete(id)
+        this.takeTurn(id, message.text)
+        return
+      case 'error':
+        // A cough or the keyboard: nothing was said, so nothing shows.
+        if (message.code === 'no_speech') {
+          this.dropTurn(id)
+          return
+        }
+        this.turns.delete(id)
+        this.halt()
+        this.showProblem(message.message)
+        this.settle()
+        return
+    }
+  }
+
+  /** The turn is a question. It replaces the answer, whose speech stops for good, and the core
+   * cancels that answer by itself. */
+  private takeTurn(id: string, question: string): void {
+    const previous = this.answer
+    if (previous?.speech === 'playing') this.stopSpeech()
+    if (previous && isRunning(previous.status)) previous.status = 'cancelled'
+    this.clearTurnTimers()
+    this.begin(id, question, 'waiting')
+    this.events.pose({ state: 'thinking', emotion: 'neutral', talking: false })
+    this.waitForAnswer(id)
+  }
+
+  /** The turn was nothing, so the teacher goes on where it stopped. */
+  private dropTurn(id: string): void {
+    if (!this.turns.delete(id) || this.turns.size > 0) return
+    if (this.speechPaused) this.resumeSpeech()
+    const answer = this.answer
+    if (answer?.speech === 'playing' || answer?.status === 'streaming') {
+      this.events.pose({ state: 'speaking', talking: answer.speech !== 'playing' })
+    } else if (answer?.status === 'waiting') {
+      this.events.pose({ state: 'thinking', talking: false })
+    } else {
+      this.events.pose({ state: 'idle', talking: false })
+    }
+  }
+
+  private resumeSpeech(): void {
+    this.speechPaused = false
+    this.events.speech({ type: 'resume' })
+    const speech = this.speech
+    // The watchdog stopped with the speech. Give it all the audio again, to be safe.
+    if (speech?.ended) {
+      this.speechTimer = setTimeout(() => this.speechDone(), speech.audioMs + SPEECH_GRACE_MS)
+    }
   }
 
   private cannotListen(): string | null {
@@ -265,6 +478,14 @@ export class Tutor {
   private receive(message: CoreMessage): void {
     if (message.type === 'voice.status') {
       this.setVoice(message)
+      return
+    }
+    if (message.type === 'turn.start') {
+      this.startTurn(message.id)
+      return
+    }
+    if ('id' in message && message.id !== null && this.turns.has(message.id)) {
+      this.receiveTurn(message.id, message)
       return
     }
     const answer = this.answer
@@ -389,6 +610,7 @@ export class Tutor {
   private forgetSpeech(answer: Answer): void {
     clearTimeout(this.speechTimer)
     this.speech = null
+    this.speechPaused = false
     answer.speech = 'done'
     answer.speakingIndex = null
   }
@@ -400,10 +622,21 @@ export class Tutor {
       status.message !== this.voice.message
     this.voice = status
     if (changed) this.events.voiceStatus(this.voiceStatus)
+    // Conversation mode waits for voice, after the app starts or the core comes back.
+    if (status.state === 'ready') this.startConversation(false)
   }
 
   private lostCore(): void {
     this.setVoice(VOICE_OFF)
+    // The core forgot conversation mode. It starts again once the core can listen.
+    if (this.conversationStarted) {
+      this.conversationStarted = false
+      this.turns.clear()
+      clearTimeout(this.autoPauseTimer)
+      this.events.microphone(false)
+      this.emitConversation()
+    }
+    if (this.speechPaused) this.resumeSpeech()
     const answer = this.answer
     if (!answer) return
     if (isRunning(answer.status)) {
