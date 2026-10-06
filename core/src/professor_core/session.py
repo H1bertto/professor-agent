@@ -45,7 +45,7 @@ from professor_core.protocol import (
     VoiceStatus,
 )
 from professor_core.providers import create_llm_service, describe_provider_error, list_models
-from professor_core.speaking import SendAudio, Speaker, guess_language
+from professor_core.speaking import SendAudio, Speaker, guess_language, voices_for
 from professor_core.speech_models import VoiceEngine
 from professor_core.turn_recording import recordings_folder, save_turn
 
@@ -397,6 +397,7 @@ class Session:
             kokoro,
             main_language=language,
             english_voice=voice.english_voice,
+            voices=voices_for(voice),
             send=self._send,
             send_audio=self._send_audio,
         )

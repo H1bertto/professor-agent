@@ -11,7 +11,7 @@ import numpy as np
 from kokoro_onnx import Kokoro
 
 from professor_core import speaking
-from professor_core.speaking import Piece, render_sentence
+from professor_core.speaking import Piece, Voices, render_sentence
 from professor_core.speech_models import KOKORO_MODEL, KOKORO_VOICES, models_folder
 
 TEACHERS = {"dora": "pf_dora", "alex": "pm_alex"}
@@ -43,9 +43,8 @@ def save(path: Path, samples: np.ndarray) -> None:
 
 
 def speak(kokoro: Kokoro, teacher: str, native: str, english_voice: str) -> np.ndarray:
-    speaking.TEACHER_VOICE = teacher
-    speaking.NATIVE_ENGLISH_VOICE = native
-    parts = render_sentence(kokoro, ANSWER, english_voice)  # type: ignore[arg-type]
+    voices = Voices(teacher=teacher, native=native)
+    parts = render_sentence(kokoro, ANSWER, english_voice, voices)  # type: ignore[arg-type]
     return np.concatenate([part.samples for part in parts])
 
 

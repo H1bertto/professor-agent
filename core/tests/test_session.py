@@ -347,6 +347,26 @@ async def test_says_so_when_the_answer_comes_back_empty(fake_provider: FakeProvi
     await session.close()
 
 
+async def test_speaks_with_the_voices_in_the_settings(
+    fake_provider: FakeProvider, tmp_path: Path
+) -> None:
+    kokoro = FakeKokoro()
+    engine = await ready_engine(tmp_path, kokoro=kokoro)
+    outbox = Outbox()
+
+    async def send_audio(frame: bytes) -> None:
+        pass
+
+    session = new_session(outbox, send_audio=send_audio, voice=engine)
+    voice = VOICE_ON.model_copy(update={"speak_answers": True, "teacher_voice": "alex"})
+    await session.handle(configure(fake_provider).model_copy(update={"voice": voice}))
+    await session.handle(UserText(id="q1", text="Qual a diferença entre since e for?"))
+
+    await outbox.until("q1", "speech.end")
+    assert {call["voice"] for call in kokoro.calls} == {"pm_alex"}
+    await session.close()
+
+
 async def test_replaces_a_pipeline_that_stopped_by_itself(fake_provider: FakeProvider) -> None:
     outbox = Outbox()
     session = new_session(outbox)

@@ -23,12 +23,23 @@ from professor_core.protocol import (
     SpeechSegment,
     SpeechStart,
     SpokenLanguage,
+    VoiceConfig,
     encode_audio,
 )
 
 SPEECH_SAMPLE_RATE = 24_000
 TEACHER_VOICE = "pf_dora"
 NATIVE_ENGLISH_VOICE = "af_heart"
+# The voices the settings offer, by the names the protocol uses, and their Kokoro names.
+TEACHER_VOICES = {"dora": "pf_dora", "alex": "pm_alex"}
+NATIVE_VOICES = {
+    "heart": "af_heart",
+    "bella": "af_bella",
+    "michael": "am_michael",
+    "fenrir": "am_fenrir",
+    "puck": "am_puck",
+    "adam": "am_adam",
+}
 KOKORO_LANGUAGES: dict[SpokenLanguage, str] = {"pt": "pt-br", "en": "en-us"}
 # About 0.2 s of speech per audio frame, small enough to stop quickly after a cancel.
 FRAME_SAMPLES = SPEECH_SAMPLE_RATE // 5
@@ -110,15 +121,30 @@ class SpokenPart:
     samples: np.ndarray
 
 
+@dataclass(frozen=True)
+class Voices:
+    """The Kokoro voices of one answer: the teacher's, and the native English one."""
+
+    teacher: str = TEACHER_VOICE
+    native: str = NATIVE_ENGLISH_VOICE
+
+
+DEFAULT_VOICES = Voices()
+
+
+def voices_for(config: VoiceConfig) -> Voices:
+    return Voices(TEACHER_VOICES[config.teacher_voice], NATIVE_VOICES[config.native_voice])
+
+
 def render_sentence(
-    kokoro: Any, pieces: list[Piece], english_voice: EnglishVoice
+    kokoro: Any, pieces: list[Piece], english_voice: EnglishVoice, voices: Voices = DEFAULT_VOICES
 ) -> list[SpokenPart]:
     """The audio for one sentence. Blocks while Kokoro runs, so call it from a thread."""
     pieces = _merge_blank_pieces(pieces)
     if not _has_words(pieces):
         return []
     if english_voice == "teacher":
-        return [_in_teacher_voice(kokoro, pieces)]
+        return [_in_teacher_voice(kokoro, pieces, voices.teacher)]
     # The native voice says the longer English runs. Everything between them, short English
     # words included, is one part in the teacher's voice.
     parts = []
@@ -126,23 +152,21 @@ def render_sentence(
         run = [piece for _, pieces_of_run in group for piece in pieces_of_run]
         if native:
             text = _text(run)
-            samples, _ = kokoro.create(
-                text, voice=NATIVE_ENGLISH_VOICE, lang=KOKORO_LANGUAGES["en"]
-            )
+            samples, _ = kokoro.create(text, voice=voices.native, lang=KOKORO_LANGUAGES["en"])
             parts.append(SpokenPart(text, "en", samples))
         elif _has_words(run):
-            parts.append(_in_teacher_voice(kokoro, run))
+            parts.append(_in_teacher_voice(kokoro, run, voices.teacher))
     return parts
 
 
-def _in_teacher_voice(kokoro: Any, pieces: list[Piece]) -> SpokenPart:
+def _in_teacher_voice(kokoro: Any, pieces: list[Piece], voice: str) -> SpokenPart:
     """Each piece becomes phonemes in its own language, and they are rendered in one pass, so
     the sentence keeps one rhythm (variant C of the mixed-language spike)."""
     phonemes = " ".join(
         kokoro.tokenizer.phonemize(piece.text, KOKORO_LANGUAGES[piece.lang]).strip()
         for piece in pieces
     )
-    samples, _ = kokoro.create(phonemes, voice=TEACHER_VOICE, is_phonemes=True)
+    samples, _ = kokoro.create(phonemes, voice=voice, is_phonemes=True)
     return SpokenPart(_text(pieces), _main(pieces), samples)
 
 
@@ -217,11 +241,13 @@ class Speaker:
         english_voice: EnglishVoice,
         send: Send,
         send_audio: SendAudio,
+        voices: Voices = DEFAULT_VOICES,
     ) -> None:
         self._id = question_id
         self._kokoro = kokoro
         self._main_language = main_language
         self._english_voice = english_voice
+        self._voices = voices
         self._send = send
         self._send_audio = send_audio
         self._splitter = SentenceSplitter()
@@ -257,7 +283,7 @@ class Speaker:
         try:
             while (sentence := await self._sentences.get()) is not None:
                 parts = await asyncio.to_thread(
-                    render_sentence, self._kokoro, sentence, self._english_voice
+                    render_sentence, self._kokoro, sentence, self._english_voice, self._voices
                 )
                 for part in parts:
                     await self._send_part(part)
