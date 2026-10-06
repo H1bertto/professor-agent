@@ -34,6 +34,10 @@ KOKORO_LANGUAGES: dict[SpokenLanguage, str] = {"pt": "pt-br", "en": "en-us"}
 FRAME_SAMPLES = SPEECH_SAMPLE_RATE // 5
 # The first sentence may stop at a comma once it is this long, so speech starts sooner.
 FIRST_CLAUSE_MIN_CHARS = 25
+# With the native English voice, only English this long, or a whole English sentence, changes
+# voice. Rendered alone, a short Portuguese piece came out slower and lower (59 ms per phoneme,
+# against 44 in one pass), so single English words stay in the teacher's voice.
+NATIVE_MIN_WORDS = 3
 
 EnglishVoice = Literal["teacher", "native"]
 StopReason = Literal["cancelled", "error"]
@@ -111,27 +115,57 @@ def render_sentence(
 ) -> list[SpokenPart]:
     """The audio for one sentence. Blocks while Kokoro runs, so call it from a thread."""
     pieces = _merge_blank_pieces(pieces)
-    if not any(_HAS_WORDS.search(piece.text) for piece in pieces):
+    if not _has_words(pieces):
         return []
-    if english_voice == "native":
-        # Each run of one language is its own part, in the voice of that language.
-        parts = []
-        for lang, run in groupby(pieces, key=lambda piece: piece.lang):
-            text = "".join(piece.text for piece in run).strip()
-            if not _HAS_WORDS.search(text):
-                continue
-            voice = NATIVE_ENGLISH_VOICE if lang == "en" else TEACHER_VOICE
-            samples, _ = kokoro.create(text, voice=voice, lang=KOKORO_LANGUAGES[lang])
-            parts.append(SpokenPart(text, lang, samples))
-        return parts
-    # The teacher's voice: each piece becomes phonemes in its own language, and the sentence
-    # is rendered in one pass, so it keeps one rhythm (variant C of the mixed-language spike).
+    if english_voice == "teacher":
+        return [_in_teacher_voice(kokoro, pieces)]
+    # The native voice says the longer English runs. Everything between them, short English
+    # words included, is one part in the teacher's voice.
+    parts = []
+    for native, group in groupby(_runs_for_native_voice(pieces), key=lambda run: run[0]):
+        run = [piece for _, pieces_of_run in group for piece in pieces_of_run]
+        if native:
+            text = _text(run)
+            samples, _ = kokoro.create(
+                text, voice=NATIVE_ENGLISH_VOICE, lang=KOKORO_LANGUAGES["en"]
+            )
+            parts.append(SpokenPart(text, "en", samples))
+        elif _has_words(run):
+            parts.append(_in_teacher_voice(kokoro, run))
+    return parts
+
+
+def _in_teacher_voice(kokoro: Any, pieces: list[Piece]) -> SpokenPart:
+    """Each piece becomes phonemes in its own language, and they are rendered in one pass, so
+    the sentence keeps one rhythm (variant C of the mixed-language spike)."""
     phonemes = " ".join(
         kokoro.tokenizer.phonemize(piece.text, KOKORO_LANGUAGES[piece.lang]).strip()
         for piece in pieces
     )
     samples, _ = kokoro.create(phonemes, voice=TEACHER_VOICE, is_phonemes=True)
-    return [SpokenPart("".join(piece.text for piece in pieces).strip(), _main(pieces), samples)]
+    return SpokenPart(_text(pieces), _main(pieces), samples)
+
+
+def _runs_for_native_voice(pieces: list[Piece]) -> list[tuple[bool, list[Piece]]]:
+    """Each run of one language, and whether the native English voice says it."""
+    runs = [(lang, list(run)) for lang, run in groupby(pieces, key=lambda piece: piece.lang)]
+    has_portuguese = any(lang == "pt" and _has_words(run) for lang, run in runs)
+    return [
+        (lang == "en" and (not has_portuguese or _word_count(run) >= NATIVE_MIN_WORDS), run)
+        for lang, run in runs
+    ]
+
+
+def _text(pieces: list[Piece]) -> str:
+    return "".join(piece.text for piece in pieces).strip()
+
+
+def _has_words(pieces: list[Piece]) -> bool:
+    return any(_HAS_WORDS.search(piece.text) for piece in pieces)
+
+
+def _word_count(pieces: list[Piece]) -> int:
+    return sum(1 for word in _text(pieces).split() if _HAS_WORDS.search(word))
 
 
 def _merge_blank_pieces(pieces: list[Piece]) -> list[Piece]:
