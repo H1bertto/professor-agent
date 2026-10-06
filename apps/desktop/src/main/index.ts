@@ -13,7 +13,13 @@ import {
   scheduleDevAsk,
   scheduleOverlayCapture
 } from './debug-capture'
-import { devTalkRequested, devVoiceOverride, FileMicrophone, SpeechRecorder } from './dev-voice'
+import {
+  devConversationRequested,
+  devTalkRequested,
+  devVoiceOverride,
+  FileMicrophone,
+  SpeechRecorder
+} from './dev-voice'
 import { KeyVault } from './key-vault'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
@@ -264,6 +270,7 @@ async function start(): Promise<void> {
   const hotkeyProblem = setTalkHotkey(startingTalk.hotkey)
   if (hotkeyProblem) console.warn(`${hotkeyProblem} (${startingTalk.hotkey})`)
   applyConversation(startingTalk)
+  if (devConversationRequested()) tutor.setConversation(true, 0)
 
   app.on('second-instance', () => {
     overlay.showInactive()

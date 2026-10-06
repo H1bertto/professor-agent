@@ -8,7 +8,10 @@ import { MICROPHONE_SAMPLE_RATE, type VoiceConfig } from '../shared/core-protoco
 // - PROFESSOR_DEV_VOICE=teacher or native turns voice on, with spoken answers, without changing
 //   the saved settings.
 // - PROFESSOR_DEV_MIC_FILE=<file.wav> plays a 16 kHz mono 16-bit WAV to the core in place of the
-//   microphone, then silence, so the core ends the question by itself.
+//   microphone, then silence, so the core ends the question by itself. Several files, separated
+//   by `;`, play one after the other with PROFESSOR_DEV_MIC_GAP_MS of silence between them (2500
+//   by default), for example to speak over the teacher in conversation mode.
+// - PROFESSOR_DEV_CONVERSATION=1 turns conversation mode on, without pausing by itself.
 // - PROFESSOR_DEV_TALK=1 presses the talk hotkey once, when voice is ready.
 // - PROFESSOR_CAPTURE_SPEECH=<file.wav> saves each spoken answer as the overlay receives it, and
 //   logs when the overlay starts each part and finishes playing.
@@ -26,6 +29,10 @@ export function devVoiceOverride(env = process.env): VoiceConfig | null {
   }
 }
 
+export function devConversationRequested(env = process.env): boolean {
+  return !app.isPackaged && env.PROFESSOR_DEV_CONVERSATION === '1'
+}
+
 export function devTalkRequested(env = process.env): boolean {
   return !app.isPackaged && env.PROFESSOR_DEV_TALK === '1'
 }
@@ -35,6 +42,7 @@ const BLOCK_BYTES = 1024
 const BLOCK_MS = 32
 /** Silence after the file, long enough for the core to hear that the question ended. */
 const TRAILING_SILENCE_MS = 3000
+const DEFAULT_GAP_MS = 2500
 
 /** A microphone that plays a WAV file at the pace of real speech. */
 export class FileMicrophone {
@@ -43,16 +51,21 @@ export class FileMicrophone {
   constructor(private readonly pcm: Uint8Array) {}
 
   static async load(env = process.env): Promise<FileMicrophone | null> {
-    const file = env.PROFESSOR_DEV_MIC_FILE
-    if (app.isPackaged || !file) return null
-    const wav = readWav(await readFile(file))
-    if (!wav || wav.sampleRate !== MICROPHONE_SAMPLE_RATE || wav.channels !== 1) {
-      console.warn(
-        'PROFESSOR_DEV_MIC_FILE must be a 16 kHz mono 16-bit WAV, so the app ignores it.'
-      )
-      return null
+    const files = env.PROFESSOR_DEV_MIC_FILE
+    if (app.isPackaged || !files) return null
+    const clips: Uint8Array[] = []
+    for (const file of files.split(';').filter(Boolean)) {
+      const wav = readWav(await readFile(file))
+      if (!wav || wav.sampleRate !== MICROPHONE_SAMPLE_RATE || wav.channels !== 1) {
+        console.warn(
+          'PROFESSOR_DEV_MIC_FILE must name 16 kHz mono 16-bit WAV files, so the app ignores it.'
+        )
+        return null
+      }
+      clips.push(wav.pcm)
     }
-    return new FileMicrophone(wav.pcm)
+    const gapMs = Number(env.PROFESSOR_DEV_MIC_GAP_MS ?? DEFAULT_GAP_MS)
+    return new FileMicrophone(joinClips(clips, Number.isFinite(gapMs) ? gapMs : DEFAULT_GAP_MS))
   }
 
   set(on: boolean, hear: (pcm: Uint8Array) => void): void {
@@ -71,6 +84,19 @@ export class FileMicrophone {
       hear(block)
     }, BLOCK_MS)
   }
+}
+
+/** The clips one after the other, with this much silence between them. */
+export function joinClips(clips: Uint8Array[], gapMs: number): Uint8Array {
+  const gapBytes = Math.round((gapMs / 1000) * MICROPHONE_SAMPLE_RATE) * 2
+  const size = clips.reduce((total, clip) => total + clip.byteLength, 0)
+  const joined = new Uint8Array(size + gapBytes * Math.max(0, clips.length - 1))
+  let offset = 0
+  clips.forEach((clip, index) => {
+    joined.set(clip, offset)
+    offset += clip.byteLength + (index < clips.length - 1 ? gapBytes : 0)
+  })
+  return joined
 }
 
 /** Saves the speech of each answer to a WAV file, to check it without listening. */

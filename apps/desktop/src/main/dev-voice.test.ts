@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 
-import { FileMicrophone, readWav, wavFile } from './dev-voice'
+import { FileMicrophone, joinClips, readWav, wavFile } from './dev-voice'
 
 describe('WAV files', () => {
   it('reads back what it writes', () => {
@@ -58,5 +58,15 @@ describe('FileMicrophone', () => {
     // The file, then about three seconds of silence.
     expect(blocks.length).toBeGreaterThan(90)
     expect(blocks.length).toBeLessThan(100)
+  })
+})
+
+describe('joinClips', () => {
+  it('puts the gap between the clips, not after the last one', () => {
+    const joined = joinClips([new Uint8Array([1, 1]), new Uint8Array([2, 2])], 1)
+    // One millisecond at 16 kHz is 16 samples, 32 bytes.
+    expect(joined.byteLength).toBe(2 + 32 + 2)
+    expect([...joined.subarray(0, 2), ...joined.subarray(34)]).toEqual([1, 1, 2, 2])
+    expect(joined.subarray(2, 34).every((byte) => byte === 0)).toBe(true)
   })
 })
