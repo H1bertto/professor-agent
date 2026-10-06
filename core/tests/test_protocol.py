@@ -61,9 +61,16 @@ def test_voice_settings_accept_only_known_values() -> None:
         "speakAnswers": True,
         "spokenLanguage": "auto",
         "englishVoice": "native",
+        "teacherVoice": "alex",
+        "nativeVoice": "fenrir",
     }
-    assert VoiceConfig.model_validate(voice).english_voice == "native"
-    for field, value in (("spokenLanguage", "es"), ("englishVoice", "robot")):
+    assert VoiceConfig.model_validate(voice).native_voice == "fenrir"
+    for field, value in (
+        ("spokenLanguage", "es"),
+        ("englishVoice", "robot"),
+        ("teacherVoice", "pf_dora"),
+        ("nativeVoice", "am_santa"),
+    ):
         with pytest.raises(ValidationError):
             VoiceConfig.model_validate({**voice, field: value})
 

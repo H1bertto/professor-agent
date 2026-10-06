@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_SETTINGS, DEFAULT_VOICE, parseSettings } from './settings'
+import { DEFAULT_SETTINGS, DEFAULT_TALK, DEFAULT_VOICE, parseSettings } from './settings'
 
 const PROVIDER = {
   preset: 'anthropic',
@@ -15,7 +15,20 @@ const VALID = {
   overlayBounds: { x: 10, y: 20, width: 300, height: 400 },
   provider: PROVIDER,
   persona: { name: 'Ana', instructions: 'Correct my grammar.' },
-  voice: { enabled: true, speakAnswers: false, spokenLanguage: 'en', englishVoice: 'native' }
+  voice: {
+    enabled: true,
+    speakAnswers: false,
+    spokenLanguage: 'en',
+    englishVoice: 'native',
+    teacherVoice: 'alex',
+    nativeVoice: 'puck'
+  },
+  talk: {
+    mode: 'conversation',
+    hotkey: 'Alt+Space',
+    hotkeyLabel: 'Alt + Space',
+    autoPauseMinutes: 10
+  }
 }
 
 describe('parseSettings', () => {
@@ -40,6 +53,32 @@ describe('parseSettings', () => {
       expect(parseSettings({ ...VALID, voice }).voice).toEqual(DEFAULT_VOICE)
     }
     expect(DEFAULT_VOICE.enabled).toBe(false)
+  })
+
+  it('keeps the saved voice settings when a newer voice field is missing', () => {
+    const older = {
+      enabled: true,
+      speakAnswers: false,
+      spokenLanguage: 'en',
+      englishVoice: 'native'
+    }
+    expect(parseSettings({ ...VALID, voice: older }).voice).toEqual({
+      ...older,
+      teacherVoice: DEFAULT_VOICE.teacherVoice,
+      nativeVoice: DEFAULT_VOICE.nativeVoice
+    })
+  })
+
+  it('falls back to the default talk settings, field by field', () => {
+    expect(parseSettings({ ...VALID, talk: undefined }).talk).toEqual(DEFAULT_TALK)
+    expect(parseSettings({ ...VALID, talk: { mode: 'conversation' } }).talk).toEqual({
+      ...DEFAULT_TALK,
+      mode: 'conversation'
+    })
+    expect(parseSettings({ ...VALID, talk: { ...VALID.talk, hotkey: 'T' } }).talk).toEqual(
+      DEFAULT_TALK
+    )
+    expect(DEFAULT_TALK.mode).toBe('hotkey')
   })
 
   it('falls back to the default avatar when the avatar is invalid', () => {

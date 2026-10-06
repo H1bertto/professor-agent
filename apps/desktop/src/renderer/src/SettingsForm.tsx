@@ -1,15 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type {
   ProviderTestResult,
   SettingsForm as SettingsRequest,
   SettingsView,
   VoiceStatusView
 } from '../../shared/api'
-import type { VoiceConfig } from '../../shared/core-protocol'
+import {
+  NATIVE_VOICES,
+  TEACHER_VOICES,
+  type NativeVoice,
+  type TeacherVoice,
+  type VoiceConfig
+} from '../../shared/core-protocol'
+import { acceleratorFor } from '../../shared/hotkeys'
 import { LIMITS, PROVIDER_PRESETS, type ProviderPresetId } from '../../shared/providers'
 import {
+  hotkeyLabel,
   initialForm,
   modelWarning,
+  NATIVE_VOICE_NAMES,
+  TEACHER_VOICE_NAMES,
   presetById,
   savedKeyApplies,
   toProviderForm,
@@ -66,6 +76,11 @@ export function SettingsForm({
     setSave({ status: 'idle' })
   }
 
+  const changeTalk = (changes: Partial<FormState['talk']>): void => {
+    setForm((current) => ({ ...current, talk: { ...current.talk, ...changes } }))
+    setSave({ status: 'idle' })
+  }
+
   const choosePreset = (id: ProviderPresetId): void => {
     setForm((current) => withPreset(current, id, view))
     setModels([])
@@ -113,7 +128,8 @@ export function SettingsForm({
       {
         provider: null,
         persona: { name: form.name, instructions: form.instructions },
-        voice: form.voice
+        voice: form.voice,
+        talk: form.talk
       },
       'The provider and its key were removed.'
     )
@@ -286,6 +302,22 @@ export function SettingsForm({
               </select>
             </label>
             <label className="field">
+              <span>Teacher&apos;s voice</span>
+              <select
+                value={form.voice.teacherVoice}
+                disabled={!form.voice.speakAnswers}
+                onChange={(event) =>
+                  changeVoice({ teacherVoice: event.target.value as TeacherVoice })
+                }
+              >
+                {TEACHER_VOICES.map((voice) => (
+                  <option key={voice} value={voice}>
+                    {TEACHER_VOICE_NAMES[voice]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
               <span>English words in the answers</span>
               <select
                 value={form.voice.englishVoice}
@@ -303,6 +335,24 @@ export function SettingsForm({
                 keeps its pace.
               </small>
             </label>
+            {form.voice.englishVoice === 'native' && (
+              <label className="field">
+                <span>Native English voice</span>
+                <select
+                  value={form.voice.nativeVoice}
+                  disabled={!form.voice.speakAnswers}
+                  onChange={(event) =>
+                    changeVoice({ nativeVoice: event.target.value as NativeVoice })
+                  }
+                >
+                  {NATIVE_VOICES.map((voice) => (
+                    <option key={voice} value={voice}>
+                      {NATIVE_VOICE_NAMES[voice]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </>
         )}
 
@@ -320,6 +370,64 @@ export function SettingsForm({
           />
         )}
       </section>
+
+      {form.voice.enabled && (
+        <section>
+          <h2>How you talk</h2>
+          <label className="check">
+            <input
+              type="radio"
+              name="talk-mode"
+              checked={form.talk.mode === 'hotkey'}
+              onChange={() => changeTalk({ mode: 'hotkey' })}
+            />
+            <span>Press the hotkey for each question</span>
+          </label>
+          <label className="check">
+            <input
+              type="radio"
+              name="talk-mode"
+              checked={form.talk.mode === 'conversation'}
+              onChange={() => changeTalk({ mode: 'conversation' })}
+            />
+            <span>Conversation: the microphone stays on</span>
+          </label>
+          <p className="hint">
+            {form.talk.mode === 'conversation'
+              ? 'Just talk, and talk over the teacher to interrupt. Use headphones, so the teacher does not hear its own voice. The hotkey pauses and resumes the listening.'
+              : 'Press the hotkey, ask out loud, and stop talking or press it again.'}
+          </p>
+
+          <div className="field">
+            <span>Hotkey</span>
+            <HotkeyField
+              label={form.talk.hotkeyLabel}
+              onChange={(hotkey, label) => changeTalk({ hotkey, hotkeyLabel: label })}
+            />
+          </div>
+
+          {form.talk.mode === 'conversation' && (
+            <label className="field">
+              <span>Pause listening after this many minutes without speech</span>
+              <input
+                type="number"
+                min={0}
+                max={60}
+                value={form.talk.autoPauseMinutes}
+                onChange={(event) =>
+                  changeTalk({
+                    autoPauseMinutes: Math.max(
+                      0,
+                      Math.min(60, Math.round(Number(event.target.value) || 0))
+                    )
+                  })
+                }
+              />
+              <small>0 never pauses.</small>
+            </label>
+          )}
+        </section>
+      )}
 
       <div className="row actions">
         <button type="submit" className="primary" disabled={save.status === 'saving'}>
@@ -340,5 +448,53 @@ export function SettingsForm({
         )}
       </div>
     </form>
+  )
+}
+
+interface HotkeyFieldProps {
+  label: string
+  onChange(hotkey: string, label: string): void
+}
+
+/** Shows the hotkey, and records a new one from the next keys the student presses. */
+function HotkeyField({ label, onChange }: HotkeyFieldProps): React.JSX.Element {
+  const [recording, setRecording] = useState(false)
+  const [hint, setHint] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!recording) return
+    const record = (event: KeyboardEvent): void => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.key === 'Escape') {
+        setRecording(false)
+        setHint(null)
+        return
+      }
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return
+      const accelerator = acceleratorFor(event)
+      if (!accelerator) {
+        setHint('Hold Ctrl, Alt, or the Windows key with another key, or use a function key.')
+        return
+      }
+      onChange(accelerator, hotkeyLabel(event))
+      setRecording(false)
+      setHint(null)
+    }
+    window.addEventListener('keydown', record, true)
+    return () => window.removeEventListener('keydown', record, true)
+  }, [recording, onChange])
+
+  return (
+    <>
+      <div className="row">
+        <kbd className="hotkey">{recording ? 'Press the new shortcut...' : label}</kbd>
+        <button type="button" onClick={() => setRecording((now) => !now)}>
+          {recording ? 'Cancel' : 'Change'}
+        </button>
+      </div>
+      {hint && <small className="warning">{hint}</small>}
+      <small>The new shortcut works once you save.</small>
+    </>
   )
 }

@@ -9,11 +9,12 @@ The Electron app of Professor Agent. It shows the avatar on top of your other ap
 - Two built-in avatars: Seed-san (3D, VRM) and Chalk (2D, PNGTuber). You can import your own, see [docs/avatars.md](../../docs/avatars.md).
 - The avatar breathes, blinks, and follows the mouse cursor with its eyes and head.
 - **Text chat with your AI provider.** Click the avatar (without dragging it) or press `Ctrl+Alt+Space` to ask a question. The answer streams into a bubble beside the avatar, which looks up while it thinks, moves its mouth while the text streams, and shows the teacher's emotion. The bubble has Stop, Pin, and Close, and hides by itself a while after the answer ends.
-- **Voice.** Turn it on in the settings, then press `Ctrl+Shift` with the key below Esc (`'` on a Brazilian keyboard) and ask out loud. Press it again when you finish, or just stop talking. The teacher answers out loud while the text streams, the bubble highlights the sentence being said, and the avatar's mouth follows the voice. Speech runs on this computer and needs the core's voice extra, see [`core/README.md`](../../core/README.md#voice). If Windows has more than one keyboard layout, `Ctrl+Shift` on its own switches between them, and in the other layout the hotkey may not work. Remove the layout you do not use, or turn off that shortcut in the Windows keyboard settings (Input language hot keys).
-- **Settings** (tray menu > **Settings and credits**): pick a provider (Anthropic, OpenAI, OpenRouter, Groq, Google Gemini, or any OpenAI-compatible API), paste your API key, test the connection, choose a model, name the teacher, and set up voice.
-- The tray icon menu: ask a question, talk to the teacher, show or hide the avatar (also `Ctrl+Alt+P`), switch or import avatars, try expressions and talking, reset the position, and open the settings.
+- **Voice.** Turn it on in the settings, then press `Ctrl` with the key below Esc (`'` on a Brazilian keyboard), or the hotkey you recorded in the settings, and ask out loud. Press it again when you finish, or just stop talking. The teacher answers out loud while the text streams, the bubble highlights the sentence being said, and the avatar's mouth follows the voice. Speech runs on this computer and needs the core's voice extra, see [`core/README.md`](../../core/README.md#voice). If Windows has more than one keyboard layout, `Ctrl+Shift` on its own switches between them, and in the other layout the hotkey may not work. Remove the layout you do not use, or turn off that shortcut in the Windows keyboard settings (Input language hot keys).
+- **Conversation mode.** With headphones on, choose it in the settings or the tray. The microphone stays open, the teacher answers when you finish speaking, and you can talk over the teacher to interrupt. A red dot on the avatar shows when the microphone is open. The hotkey pauses and resumes the listening, which also pauses by itself after a few minutes of silence.
+- **Settings** (tray menu > **Settings and credits**): pick a provider (Anthropic, OpenAI, OpenRouter, Groq, Google Gemini, or any OpenAI-compatible API), paste your API key, test the connection, choose a model, name the teacher, set up voice with a female or male teacher and English voice, choose how you talk, and record the talk hotkey.
+- The tray icon menu: ask a question, talk to the teacher or pause the listening, turn conversation mode on and off, show or hide the avatar (also `Ctrl+Alt+P`), switch or import avatars, try expressions and talking, reset the position, and open the settings.
 
-The design is explained in [ADR 0002](../../docs/adr/0002-avatar-overlay.md) (overlay), [ADR 0003](../../docs/adr/0003-text-chat.md) (text chat), and [ADR 0004](../../docs/adr/0004-voice-with-a-hotkey.md) (voice).
+The design is explained in [ADR 0002](../../docs/adr/0002-avatar-overlay.md) (overlay), [ADR 0003](../../docs/adr/0003-text-chat.md) (text chat), [ADR 0004](../../docs/adr/0004-voice-with-a-hotkey.md) (voice), and [ADR 0005](../../docs/adr/0005-conversation-mode.md) (conversation mode).
 
 ## Run
 
@@ -32,21 +33,24 @@ The overlay must run on Windows (or macOS) to appear on top of other apps. On WS
 
 These environment variables only work outside the packaged app:
 
-| Variable                                      | Effect                                                            |
-| --------------------------------------------- | ----------------------------------------------------------------- |
-| `PROFESSOR_AVATAR=builtin:chalk`              | Shows a built-in avatar without changing your settings            |
-| `PROFESSOR_DEV_PROVIDER=<json>`               | Uses this provider instead of the saved one (see below)           |
-| `PROFESSOR_DEV_ASK=<question>`                | Asks the question once the avatar is on screen and the core is up |
-| `PROFESSOR_CAPTURE_OVERLAY=<file.png>`        | Saves what the overlay draws, 2 seconds after the avatar loads    |
-| `PROFESSOR_CAPTURE_SCREEN=<file.png>`         | Saves the screen area under the overlay, to check transparency    |
-| `PROFESSOR_CAPTURE_BUBBLE=<file.png>`         | Saves what the answer bubble draws                                |
-| `PROFESSOR_CAPTURE_DELAY_MS=<ms>`             | Waits this long after the avatar loads before the captures        |
-| `PROFESSOR_CAPTURE_EXIT=1`                    | Quits after the captures                                          |
-| `PROFESSOR_DEV_VOICE=teacher` or `native`     | Turns voice on, with that English voice, without saving it        |
-| `PROFESSOR_DEV_MIC_FILE=<file.wav>`           | Plays a 16 kHz mono WAV in place of the microphone                |
-| `PROFESSOR_DEV_TALK=1`                        | Presses the talk hotkey once voice is ready                       |
-| `PROFESSOR_CAPTURE_SPEECH=<file.wav>`         | Saves the spoken answer and logs what the overlay played          |
-| `PROFESSOR_CORE_PORT`, `PROFESSOR_CORE_TOKEN` | Must match the core, see [`core/README.md`](../../core/README.md) |
+| Variable                                      | Effect                                                                        |
+| --------------------------------------------- | ----------------------------------------------------------------------------- |
+| `PROFESSOR_AVATAR=builtin:chalk`              | Shows a built-in avatar without changing your settings                        |
+| `PROFESSOR_DEV_PROVIDER=<json>`               | Uses this provider instead of the saved one (see below)                       |
+| `PROFESSOR_DEV_ASK=<question>`                | Asks the question once the avatar is on screen and the core is up             |
+| `PROFESSOR_CAPTURE_OVERLAY=<file.png>`        | Saves what the overlay draws, 2 seconds after the avatar loads                |
+| `PROFESSOR_CAPTURE_SCREEN=<file.png>`         | Saves the screen area under the overlay, to check transparency                |
+| `PROFESSOR_CAPTURE_BUBBLE=<file.png>`         | Saves what the answer bubble draws                                            |
+| `PROFESSOR_CAPTURE_DELAY_MS=<ms>`             | Waits this long after the avatar loads before the captures                    |
+| `PROFESSOR_CAPTURE_EXIT=1`                    | Quits after the captures                                                      |
+| `PROFESSOR_DEV_VOICE=teacher` or `native`     | Turns voice on, with that English voice, without saving it                    |
+| `PROFESSOR_DEV_MIC_FILE=<file.wav>`           | Plays a 16 kHz mono WAV in place of the microphone. Separate several with `;` |
+| `PROFESSOR_DEV_MIC_GAP_MS=<ms>`               | Silence between those files, 2500 by default                                  |
+| `PROFESSOR_DEV_CONVERSATION=1`                | Turns conversation mode on, without pausing by itself                         |
+| `PROFESSOR_DEV_PROFILE=<name>`                | Keeps settings apart, so a check runs while the app is open                   |
+| `PROFESSOR_DEV_TALK=1`                        | Presses the talk hotkey once voice is ready                                   |
+| `PROFESSOR_CAPTURE_SPEECH=<file.wav>`         | Saves the spoken answer and logs what the overlay played                      |
+| `PROFESSOR_CORE_PORT`, `PROFESSOR_CORE_TOKEN` | Must match the core, see [`core/README.md`](../../core/README.md)             |
 
 To try the chat without a real provider or credit, run the fake provider of the core tests and point the app at it:
 

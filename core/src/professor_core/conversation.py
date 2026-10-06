@@ -80,6 +80,10 @@ class _Response:
     cancel_requested: bool = False
     timed_out: bool = False
     error: BaseException | None = None
+    # What the student heard of this answer when they cut it off. It replaces the answer in the
+    # history once the answer is saved there.
+    heard: str | None = None
+    heard_saved: bool = False
 
 
 class Conversation:
@@ -92,6 +96,7 @@ class Conversation:
         history_limit: int = HISTORY_LIMIT,
         first_text_timeout_s: float = FIRST_TEXT_TIMEOUT_S,
     ) -> None:
+        self._llm = llm
         self._on_event = on_event
         self._history_limit = history_limit
         self._first_text_timeout_s = first_text_timeout_s
@@ -116,6 +121,7 @@ class Conversation:
         self._runner: asyncio.Task[None] | None = None
         self._active: _Response | None = None
         self._waiting: _Response | None = None
+        self._last_finished: _Response | None = None
         # True between the end of an answer and the moment it is saved in the history.
         self._saving = False
         self._timers: set[asyncio.Task[None]] = set()
@@ -124,6 +130,11 @@ class Conversation:
     def alive(self) -> bool:
         """False once the pipeline has stopped, after which it can no longer answer."""
         return self._runner is not None and not self._runner.done()
+
+    @property
+    def last_ending(self) -> Any:
+        """How the provider ended the last answer, when the service tells."""
+        return getattr(self._llm, "last_ending", None)
 
     @property
     def history(self) -> list[Any]:
@@ -148,6 +159,15 @@ class Conversation:
             await self._emit(ResponseFinished(waiting.id, "cancelled"))
         elif self._active and self._active.id == message_id:
             await self._cancel_active()
+
+    def keep_only_heard(self, message_id: str, heard: str) -> None:
+        """The student cut this answer off, so the history keeps only what they heard."""
+        for response in (self._active, self._last_finished):
+            if response is not None and response.id == message_id:
+                response.heard = heard
+                if response is self._last_finished and not self._saving:
+                    self._save_heard(response)
+                return
 
     async def close(self) -> None:
         unfinished = [response for response in (self._active, self._waiting) if response]
@@ -262,6 +282,7 @@ class Conversation:
         if self._active is not response:
             return
         self._active = None
+        self._last_finished = response
         await self._emit(event)
         if not response.started:
             await self._send_waiting()
@@ -274,7 +295,26 @@ class Conversation:
     async def _on_answer_saved(self, *_: Any) -> None:
         if self._saving:
             self._saving = False
+            if self._last_finished is not None:
+                self._save_heard(self._last_finished)
             await self._send_waiting()
+
+    def _save_heard(self, response: _Response) -> None:
+        """Puts what the student heard in place of the answer, once, before the next question."""
+        if response.heard is None or response.heard_saved:
+            return
+        response.heard_saved = True
+        text = f"{response.heard} [interrupted]".strip()
+        messages = list(self._context.get_messages())
+        asked = {"role": "user", "content": response.question}
+        if len(messages) >= 2 and messages[-1].get("role") == "assistant" and messages[-2] == asked:
+            messages[-1] = {**messages[-1], "content": text}
+        elif messages and messages[-1] == asked:
+            # Cut off before a word was saved: the history still tells the teacher was interrupted.
+            messages.append({"role": "assistant", "content": text})
+        else:
+            return
+        self._context.set_messages(messages)
 
     def _after(self, delay_s: float, action: Callable[[], Awaitable[None]]) -> None:
         async def run() -> None:

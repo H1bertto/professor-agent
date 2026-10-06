@@ -97,7 +97,9 @@ describe('checkSettingsForm', () => {
       enabled: true,
       speakAnswers: true,
       spokenLanguage: 'auto',
-      englishVoice: 'teacher'
+      englishVoice: 'teacher',
+      teacherVoice: 'dora',
+      nativeVoice: 'heart'
     }
     expect(checkSettingsForm({ provider: null, persona: PERSONA, voice })).toEqual({
       ok: true,
@@ -109,6 +111,23 @@ describe('checkSettingsForm', () => {
       { ...voice, speakAnswers: 1 }
     ]) {
       expect(checkSettingsForm({ provider: null, persona: PERSONA, voice: invalid }).ok).toBe(false)
+    }
+  })
+
+  it('checks the talk settings when the form has them', () => {
+    const talk = { mode: 'conversation', hotkey: 'F8', hotkeyLabel: 'F8', autoPauseMinutes: 0 }
+    expect(checkSettingsForm({ provider: null, persona: PERSONA, talk })).toEqual({
+      ok: true,
+      value: { provider: null, persona: PERSONA, talk }
+    })
+    for (const invalid of [
+      { ...talk, mode: 'always' },
+      { ...talk, hotkey: 'Q' },
+      { ...talk, autoPauseMinutes: 61 },
+      { ...talk, autoPauseMinutes: 1.5 },
+      { ...talk, hotkeyLabel: '  ' }
+    ]) {
+      expect(checkSettingsForm({ provider: null, persona: PERSONA, talk: invalid }).ok).toBe(false)
     }
   })
 

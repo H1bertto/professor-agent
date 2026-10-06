@@ -1,6 +1,6 @@
 import { app, dialog, globalShortcut, ipcMain, screen, type IpcMainInvokeEvent } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { IpcChannel, type AvatarPose, type CoreStatus } from '../shared/api'
+import { IpcChannel, type AvatarPose, type CoreStatus, type TalkSettings } from '../shared/api'
 import type { AvatarChoice } from '../shared/avatar'
 import { avatarOptions, effectiveAvatar, resolveAvatarConfig } from './avatar-library'
 import { handleAvatarProtocol, registerAvatarScheme } from './avatar-protocol'
@@ -11,9 +11,16 @@ import {
   devAvatarOverride,
   devProviderOverride,
   scheduleDevAsk,
-  scheduleOverlayCapture
+  scheduleOverlayCapture,
+  applyDevProfile
 } from './debug-capture'
-import { devTalkRequested, devVoiceOverride, FileMicrophone, SpeechRecorder } from './dev-voice'
+import {
+  devConversationRequested,
+  devTalkRequested,
+  devVoiceOverride,
+  FileMicrophone,
+  SpeechRecorder
+} from './dev-voice'
 import { KeyVault } from './key-vault'
 import { registerOverlayControls } from './overlay-controls'
 import { createOverlayWindow } from './overlay-window'
@@ -21,7 +28,7 @@ import { avatarRoots, settingsFile } from './paths'
 import { SettingsStore } from './settings-store'
 import { isSettingsWindow, sendToSettingsWindow, showSettingsWindow } from './settings-window'
 import { systemCipher } from './system-cipher'
-import { ASK_SHORTCUT, createTray, TALK_SHORTCUT, TOGGLE_OVERLAY_SHORTCUT } from './tray'
+import { ASK_SHORTCUT, createTray, TOGGLE_OVERLAY_SHORTCUT } from './tray'
 import { Tutor } from './tutor'
 import { TutorSettings } from './tutor-settings'
 import { importPngTuberFolder, importVrm, listUserAvatars } from './user-avatars'
@@ -29,6 +36,7 @@ import { guardPermissions, registerVoiceChannels } from './voice-channels'
 import { clampToWorkArea, defaultOverlayBounds, overlaySize, type Rect } from './window-bounds'
 
 registerAvatarScheme()
+applyDevProfile()
 
 // A second copy of the app would put a second avatar on the screen.
 if (!app.requestSingleInstanceLock()) {
@@ -54,7 +62,13 @@ async function start(): Promise<void> {
     token: coreToken(),
     clientName: `desktop/${app.getVersion()}`
   })
-  const tutorSettings = new TutorSettings(settings, new KeyVault(systemCipher), core)
+  const tutorSettings = new TutorSettings(
+    settings,
+    new KeyVault(systemCipher),
+    core,
+    undefined,
+    (next) => applyTalk(next)
+  )
   const coreStatus = (): CoreStatus => ({
     connection: core.currentStatus,
     version: core.coreVersion
@@ -142,6 +156,10 @@ async function start(): Promise<void> {
       speechRecorder?.handle(command)
       sendToOverlay(IpcChannel.overlaySpeech, command)
     },
+    conversation: (view) => {
+      tray.refresh()
+      sendToOverlay(IpcChannel.overlayConversation, view)
+    },
     voiceStatus: (status) => {
       sendToSettingsWindow(IpcChannel.voiceStatusChanged, status)
       if (devTalkPending && status.state === 'ready') {
@@ -169,6 +187,35 @@ async function start(): Promise<void> {
     }
     tutor.listen()
   }
+  // The talk hotkey comes from the settings. A new one replaces the old only if it registers.
+  let talkHotkey: string | null = null
+  const setTalkHotkey = (accelerator: string): string | null => {
+    if (accelerator === talkHotkey) return null
+    const register = (key: string): boolean => {
+      try {
+        return globalShortcut.register(key, talk)
+      } catch {
+        return false
+      }
+    }
+    const previous = talkHotkey
+    if (previous) globalShortcut.unregister(previous)
+    if (register(accelerator)) {
+      talkHotkey = accelerator
+      return null
+    }
+    if (previous) register(previous)
+    return 'Another app already uses this shortcut. Choose another one.'
+  }
+  const applyConversation = (next: TalkSettings): void =>
+    tutor.setConversation(next.mode === 'conversation', next.autoPauseMinutes * 60_000)
+  const applyTalk = (next: TalkSettings): string | null => {
+    const problem = setTalkHotkey(next.hotkey)
+    if (problem) return problem
+    applyConversation(next)
+    tray.refresh()
+    return null
+  }
   const companions = createCompanionWindows(overlay, {
     teacherName: () => settings.get().persona.name,
     ask: (question) => tutor.ask(question),
@@ -183,10 +230,18 @@ async function start(): Promise<void> {
       avatars: avatarOptions(userAvatars),
       currentAvatarId: effectiveAvatar(currentChoice(), userAvatars).id,
       emotion: pose.emotion,
-      talking: pose.talking
+      talking: pose.talking,
+      talkLabel: settings.get().talk.hotkeyLabel,
+      conversation: tutor.conversation
     }),
     ask: () => companions.toggleAsk(),
     talk,
+    toggleConversation: () => {
+      const current = settings.get().talk
+      const mode = current.mode === 'conversation' ? 'hotkey' : 'conversation'
+      settings.update({ talk: { ...current, mode } })
+      applyConversation({ ...current, mode })
+    },
     toggleOverlay,
     selectAvatar,
     importVrm: () => void importAvatar('vrm'),
@@ -207,13 +262,17 @@ async function start(): Promise<void> {
 
   for (const [shortcut, action] of [
     [TOGGLE_OVERLAY_SHORTCUT, toggleOverlay],
-    [ASK_SHORTCUT, () => companions.toggleAsk()],
-    [TALK_SHORTCUT, talk]
+    [ASK_SHORTCUT, () => companions.toggleAsk()]
   ] as const) {
     if (!globalShortcut.register(shortcut, action)) {
       console.warn(`Another app already uses ${shortcut}.`)
     }
   }
+  const startingTalk = settings.get().talk
+  const hotkeyProblem = setTalkHotkey(startingTalk.hotkey)
+  if (hotkeyProblem) console.warn(`${hotkeyProblem} (${startingTalk.hotkey})`)
+  applyConversation(startingTalk)
+  if (devConversationRequested()) tutor.setConversation(true, 0)
 
   app.on('second-instance', () => {
     overlay.showInactive()

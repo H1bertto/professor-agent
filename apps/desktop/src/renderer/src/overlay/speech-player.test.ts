@@ -173,6 +173,39 @@ describe('SpeechPlayer', () => {
     expect(finished).toBe(0)
   })
 
+  it('holds the speech and its subtitles while paused, and goes on after', () => {
+    player.handle({ type: 'start', sampleRate: 24_000 })
+    player.handle({ type: 'segment', index: 0 })
+    player.handle({ type: 'audio', pcm: audio(0.2) })
+    player.handle({ type: 'segment', index: 1 })
+    player.handle({ type: 'audio', pcm: audio(0.2) })
+    player.handle({ type: 'pause' })
+
+    expect(context.state).toBe('suspended')
+    vi.advanceTimersByTime(1000)
+    expect(segments).toEqual([])
+
+    player.handle({ type: 'resume' })
+    expect(context.state).toBe('running')
+    vi.advanceTimersByTime(50)
+    expect(segments).toEqual([0])
+    vi.advanceTimersByTime(200)
+    expect(segments).toEqual([0, 1])
+  })
+
+  it('stops for good from a pause', () => {
+    player.handle({ type: 'start', sampleRate: 24_000 })
+    player.handle({ type: 'segment', index: 0 })
+    player.handle({ type: 'audio', pcm: audio(0.2) })
+    player.handle({ type: 'pause' })
+    player.handle({ type: 'stop' })
+    player.handle({ type: 'resume' })
+    vi.runAllTimers()
+
+    expect(context.sources[0].stopped).toBe(true)
+    expect(segments).toEqual([])
+  })
+
   it('reads the loudness only while speech plays', () => {
     context.level = 0.3
     expect(player.level()).toBe(0)

@@ -1,8 +1,8 @@
-// Messages between the desktop app and the core, version 2. See docs/protocol.md.
+// Messages between the desktop app and the core, version 3. See docs/protocol.md.
 
 import { isEmotion, type Emotion } from './avatar'
 
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 export type ProviderKind = 'anthropic' | 'openai-compatible'
 
@@ -30,23 +30,35 @@ export interface VoiceConfig {
   spokenLanguage: 'auto' | SpokenLanguage
   /** Who says English words: the teacher's own voice, or a native English voice. */
   englishVoice: 'teacher' | 'native'
+  /** The teacher's Portuguese voice, which also says short English words in the teacher mode. */
+  teacherVoice: TeacherVoice
+  /** The native English voice, for English phrases when `englishVoice` is `native`. */
+  nativeVoice: NativeVoice
 }
+
+export const TEACHER_VOICES = ['dora', 'alex'] as const
+export type TeacherVoice = (typeof TEACHER_VOICES)[number]
+export const NATIVE_VOICES = ['heart', 'bella', 'michael', 'fenrir', 'puck', 'adam'] as const
+export type NativeVoice = (typeof NATIVE_VOICES)[number]
 
 export const VOICE_OFF: VoiceConfig = {
   enabled: false,
   speakAnswers: false,
   spokenLanguage: 'auto',
-  englishVoice: 'teacher'
+  englishVoice: 'teacher',
+  teacherVoice: 'dora',
+  nativeVoice: 'heart'
 }
 
 /** Reads voice settings from untrusted data, or gives `null` when they do not match. */
 export function parseVoiceConfig(raw: unknown): VoiceConfig | null {
   if (!isRecord(raw)) return null
-  const { enabled, speakAnswers, spokenLanguage, englishVoice } = raw
+  const { enabled, speakAnswers, spokenLanguage, englishVoice, teacherVoice, nativeVoice } = raw
   if (typeof enabled !== 'boolean' || typeof speakAnswers !== 'boolean') return null
   if (spokenLanguage !== 'auto' && !isSpokenLanguage(spokenLanguage)) return null
   if (englishVoice !== 'teacher' && englishVoice !== 'native') return null
-  return { enabled, speakAnswers, spokenLanguage, englishVoice }
+  if (!isOneOf(TEACHER_VOICES, teacherVoice) || !isOneOf(NATIVE_VOICES, nativeVoice)) return null
+  return { enabled, speakAnswers, spokenLanguage, englishVoice, teacherVoice, nativeVoice }
 }
 
 export type ClientMessage =
@@ -62,6 +74,12 @@ export type ClientMessage =
   | { type: 'listen.start'; id: string }
   | { type: 'listen.stop'; id: string }
   | { type: 'response.cancel'; id: string }
+  /** Conversation mode: the microphone stays open, and the core finds each turn by itself. */
+  | { type: 'conversation.start' }
+  | { type: 'conversation.stop' }
+  /** How many parts of an answer's speech the student has started to hear, and whether the
+   * whole speech has played. */
+  | { type: 'speech.heard'; id: string; parts: number; finished: boolean }
 
 export const CORE_ERROR_CODES = [
   'invalid_key',
@@ -110,6 +128,8 @@ export interface TurnMetrics {
 
 export type CoreMessage =
   | { type: 'ready'; protocol: number; core: string }
+  /** In conversation mode, the student started speaking. The id names the question. */
+  | { type: 'turn.start'; id: string }
   | { type: 'voice.status'; state: VoiceState; progress: number | null; message: string | null }
   | { type: 'listen.end'; id: string; reason: ListenEndReason }
   | { type: 'transcript'; id: string; text: string; lang: SpokenLanguage }
@@ -182,6 +202,8 @@ export function parseCoreMessage(raw: unknown): CoreMessage | null {
       if (!(raw.message === null || isString(raw.message))) return null
       return { type: 'voice.status', state: raw.state, progress, message: raw.message }
     }
+    case 'turn.start':
+      return isString(raw.id) ? { type: 'turn.start', id: raw.id } : null
     case 'listen.end':
       return isString(raw.id) && isOneOf(LISTEN_END_REASONS, raw.reason)
         ? { type: 'listen.end', id: raw.id, reason: raw.reason }

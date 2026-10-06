@@ -33,10 +33,11 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 - [x] Latency measured per stage ([ADR 0004](adr/0004-voice-with-a-hotkey.md))
 
 ### Phase 4: Conversation mode
-- [ ] Always-on microphone with turn detection, headphones first
-- [ ] Speaker fallback: higher VAD threshold or half duplex while the avatar speaks
-- [ ] Interruptions: stop speaking, cancel generation, keep only what was heard in memory
-- [ ] Listening, thinking, and speaking states on the avatar
+- [x] Always-on microphone with turn detection, headphones first ([ADR 0005](adr/0005-conversation-mode.md))
+- [x] Interruptions: stop speaking, cancel generation, keep only what was heard in memory
+- [x] Listening, thinking, and speaking states on the avatar
+- [x] Male and female voices, and a talk hotkey the student can record
+- [ ] Speaker fallback: higher VAD threshold or half duplex while the avatar speaks (moved to a later phase: conversation mode needs headphones for now)
 
 ### Phase 5: Professor v1
 - [ ] Student profile: native language, subjects, level, goals, correction style

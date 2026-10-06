@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import type {
   CoreConnectionStatus,
   ProviderForm,
+  TalkSettings,
   ProviderTestResult,
   SaveResult,
   SettingsView
@@ -39,14 +40,16 @@ export class TutorSettings {
     private readonly store: SettingsStore,
     private readonly vault: KeyVault,
     private readonly core: CoreConnection,
-    private readonly testTimeoutMs = TEST_TIMEOUT_MS
+    private readonly testTimeoutMs = TEST_TIMEOUT_MS,
+    /** Applies new talk settings, such as a new hotkey, or says why it cannot. */
+    private readonly applyTalk: (talk: TalkSettings) => string | null = () => null
   ) {
     const provider = store.get().provider
     this.apiKey = provider ? vault.open(provider.encryptedKey) : null
   }
 
   view(): SettingsView {
-    const { provider, persona, voice } = this.store.get()
+    const { provider, persona, voice, talk } = this.store.get()
     return {
       provider: provider && {
         preset: provider.preset,
@@ -56,6 +59,7 @@ export class TutorSettings {
       },
       persona,
       voice,
+      talk,
       keyStorageAvailable: this.vault.available
     }
   }
@@ -76,7 +80,8 @@ export class TutorSettings {
   save(raw: unknown): SaveResult {
     const form = checkSettingsForm(raw)
     if (!form.ok) return form
-    const { provider, persona, voice = this.store.get().voice } = form.value
+    const saved = this.store.get()
+    const { provider, persona, voice = saved.voice, talk = saved.talk } = form.value
 
     let stored: StoredProvider | null = null
     let apiKey: string | null = null
@@ -100,7 +105,9 @@ export class TutorSettings {
       }
     }
 
-    this.store.update({ provider: stored, persona, voice })
+    const talkProblem = this.applyTalk(talk)
+    if (talkProblem) return { ok: false, message: talkProblem }
+    this.store.update({ provider: stored, persona, voice, talk })
     this.apiKey = apiKey
     this.core.send(this.configureMessage())
     return { ok: true, settings: this.view() }

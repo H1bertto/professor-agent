@@ -6,11 +6,16 @@
     "model": "claude-haiku-4-5",
     "apiKey": "test-key-not-real"
   },
-  "persona": { "name": "Professor", "instructions": "Use examples about cooking." },
+  "persona": {
+    "name": "Professor",
+    "instructions": "Use examples about cooking."
+  },
   "voice": {
     "enabled": true,
     "speakAnswers": true,
     "spokenLanguage": "auto",
-    "englishVoice": "teacher"
+    "englishVoice": "teacher",
+    "teacherVoice": "alex",
+    "nativeVoice": "michael"
   }
 }

@@ -1,7 +1,14 @@
 // What the settings form holds, and how it turns into the requests the main process checks.
 
-import type { ProviderForm, SettingsForm, SettingsView, VoiceStatusView } from '../../shared/api'
-import type { VoiceConfig } from '../../shared/core-protocol'
+import type {
+  ProviderForm,
+  SettingsForm,
+  SettingsView,
+  TalkSettings,
+  VoiceStatusView
+} from '../../shared/api'
+import type { NativeVoice, TeacherVoice, VoiceConfig } from '../../shared/core-protocol'
+import type { KeyPress } from '../../shared/hotkeys'
 import {
   findPreset,
   PROVIDER_PRESETS,
@@ -20,6 +27,21 @@ export interface FormState {
   name: string
   instructions: string
   voice: VoiceConfig
+  talk: TalkSettings
+}
+
+export const TEACHER_VOICE_NAMES: Record<TeacherVoice, string> = {
+  dora: 'Dora (female)',
+  alex: 'Alex (male)'
+}
+
+export const NATIVE_VOICE_NAMES: Record<NativeVoice, string> = {
+  heart: 'Heart (female)',
+  bella: 'Bella (female)',
+  michael: 'Michael (male)',
+  fenrir: 'Fenrir (male)',
+  puck: 'Puck (male)',
+  adam: 'Adam (male)'
 }
 
 export function presetById(id: ProviderPresetId): ProviderPreset {
@@ -35,7 +57,8 @@ export function initialForm(view: SettingsView): FormState {
     apiKey: '',
     name: view.persona.name,
     instructions: view.persona.instructions,
-    voice: { ...view.voice }
+    voice: { ...view.voice },
+    talk: { ...view.talk }
   }
 }
 
@@ -68,7 +91,8 @@ export function toSettingsForm(form: FormState): SettingsForm {
   return {
     provider: toProviderForm(form),
     persona: { name: form.name, instructions: form.instructions },
-    voice: form.voice
+    voice: form.voice,
+    talk: form.talk
   }
 }
 
@@ -116,4 +140,19 @@ export function voiceStatusLine(
     default:
       return { text: status.message ?? 'Voice is not available on this computer.', kind: 'error' }
   }
+}
+
+/** How a recorded shortcut looks on the student's keyboard, such as Ctrl + '. */
+export function hotkeyLabel(press: KeyPress & { key: string }): string {
+  const key =
+    press.key === ' ' ? 'Space' : press.key.length === 1 ? press.key.toUpperCase() : press.key
+  return [
+    press.ctrlKey && 'Ctrl',
+    press.altKey && 'Alt',
+    press.shiftKey && 'Shift',
+    press.metaKey && 'Win',
+    key
+  ]
+    .filter(Boolean)
+    .join(' + ')
 }

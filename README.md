@@ -4,7 +4,7 @@ A local, open source study tutor that lives on your desktop. It appears as a 2D 
 
 [Leia em português](README.pt-BR.md)
 
-> **Status:** early development. The avatar overlay, text chat with your own AI provider, and voice with a hotkey work in development builds, and conversation mode without the hotkey comes next. There is nothing to install yet. Follow the progress in the [roadmap](docs/roadmap.md).
+> **Status:** early development. The avatar overlay, text chat with your own AI provider, voice with a hotkey, and conversation mode work in development builds, and lessons with memory come next. There is nothing to install yet. Follow the progress in the [roadmap](docs/roadmap.md).
 
 ## Why another AI avatar?
 

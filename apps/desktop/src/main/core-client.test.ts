@@ -33,7 +33,7 @@ class FakeCore {
         const message = JSON.parse(data.toString()) as ClientMessage
         this.received.push(message)
         if (message.type === 'hello') {
-          socket.send(JSON.stringify({ type: 'ready', protocol: 2, core: '0.1.0' }))
+          socket.send(JSON.stringify({ type: 'ready', protocol: 3, core: '0.1.0' }))
         }
       })
     })
@@ -131,7 +131,7 @@ describe('CoreClient', () => {
     expect(coreClient.coreVersion).toBe('0.1.0')
     expect(core.received[0]).toEqual({
       type: 'hello',
-      protocol: 2,
+      protocol: 3,
       client: 'test',
       token: 'secret'
     })
@@ -193,7 +193,7 @@ describe('CoreClient', () => {
     server.on('connection', (socket) => {
       connections += 1
       socket.on('message', () =>
-        socket.send(JSON.stringify({ type: 'ready', protocol: 3, core: '9' }))
+        socket.send(JSON.stringify({ type: 'ready', protocol: 4, core: '9' }))
       )
     })
     await listening(server)

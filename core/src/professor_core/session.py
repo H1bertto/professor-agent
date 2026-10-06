@@ -1,6 +1,7 @@
 """Serves one desktop connection: turns protocol messages into a conversation and back."""
 
 import asyncio
+import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
@@ -17,13 +18,23 @@ from professor_core.conversation import (
     ResponseStarted,
     ResponseText,
 )
-from professor_core.listening import ListenEndReason, Listening, VoiceDetector, transcribe
+from professor_core.listening import (
+    ConversationWatch,
+    ListenEndReason,
+    Listening,
+    TurnJudge,
+    VoiceDetector,
+    smart_turn_judge,
+    transcribe,
+)
 from professor_core.markup import MarkupEvent, MarkupParser, TextPiece
 from professor_core.persona import build_system_prompt
 from professor_core.protocol import (
     MICROPHONE_SAMPLE_RATE,
     ClientMessage,
     Configure,
+    ConversationStart,
+    ConversationStop,
     CoreMessage,
     ErrorMessage,
     ListenEnd,
@@ -37,16 +48,19 @@ from professor_core.protocol import (
     ResponseEnd,
     ResponseStart,
     Segment,
+    SpeechHeard,
     SpokenLanguage,
     Transcript,
     TurnMetrics,
+    TurnStart,
     UserText,
     VoiceConfig,
     VoiceStatus,
 )
 from professor_core.providers import create_llm_service, describe_provider_error, list_models
-from professor_core.speaking import SendAudio, Speaker, guess_language
+from professor_core.speaking import SendAudio, Speaker, guess_language, voices_for
 from professor_core.speech_models import VoiceEngine
+from professor_core.turn_recording import recordings_folder, save_turn
 
 Send = Callable[[CoreMessage], Awaitable[None]]
 PROVIDER_TEST_TIMEOUT_S = 20.0
@@ -109,6 +123,7 @@ class Session:
         send_audio: SendAudio | None = None,
         voice: VoiceEngine | None = None,
         detector_factory: Callable[[], VoiceDetector] = silero_detector,
+        judge_factory: Callable[[], TurnJudge] = smart_turn_judge,
     ) -> None:
         self._send = send
         self._send_audio = send_audio
@@ -121,10 +136,21 @@ class Session:
         self._clocks: dict[str, TurnClock] = {}
         self._detector_factory = detector_factory
         self._detector: VoiceDetector | None = None
+        self._judge_factory = judge_factory
+        self._judge: TurnJudge | None = None
+        # Conversation mode: the open microphone, and the ids of the turns found on it.
+        self._watch: ConversationWatch | None = None
+        self._turns: set[str] = set()
+        # What the desktop reported hearing of each answer, and the speakers of recent answers.
+        self._heard: dict[str, SpeechHeard] = {}
+        self._spoken: dict[str, Speaker] = {}
+        self._latest_answer: str | None = None
         self._configuration: Configure | None = None
         self._conversation: Conversation | None = None
         self._parsers: dict[str, MarkupParser] = {}
         self._answer_pieces: dict[str, list[TextPiece]] = {}
+        # How much text each answer brought from the provider, before the markup is taken out.
+        self._answer_chars: dict[str, int] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         # The desktop starts from "off", so only changes are worth sending.
         self._reported_voice = VoiceStatus(state="off")
@@ -152,34 +178,71 @@ class Session:
                 await self._end_listening("stopped")
         elif isinstance(message, ResponseCancel):
             await self._cancel(message.id)
+        elif isinstance(message, ConversationStart):
+            await self._conversation_start()
+        elif isinstance(message, ConversationStop):
+            await self._conversation_stop()
+        elif isinstance(message, SpeechHeard):
+            self._heard[message.id] = message
 
     async def handle_audio(self, pcm: bytes) -> None:
-        """Microphone audio for the listening in progress."""
+        """Microphone audio for the listening in progress, or for the open microphone."""
         listening = self._listening
-        if listening is None:
+        if listening is not None:
+            reason = await listening.feed(pcm)
+            if reason and self._listening is listening:
+                await self._end_listening(reason)
+            return
+        watch = self._watch
+        if watch is None or self._detector is None:
             return  # Frames can still arrive right after a listening ends.
-        reason = await listening.feed(pcm)
-        if reason and self._listening is listening:
-            await self._end_listening(reason)
+        earlier = await watch.feed(pcm)
+        if earlier is None or self._watch is not watch:
+            return
+        turn_id = str(uuid.uuid4())
+        self._turns.add(turn_id)
+        self._listening = Listening(turn_id, self._detector, self._turn_judge(), earlier=earlier)
+        await self._send(TurnStart(id=turn_id))
+
+    def _voice_ready(self) -> bool:
+        voice_on = self._configuration is not None and self._configuration.voice.enabled
+        return voice_on and self._voice is not None and self._voice.models is not None
+
+    def _voice_problem(self, question_id: str | None) -> ErrorMessage:
+        return ErrorMessage(
+            id=question_id,
+            code="voice_unavailable",
+            message=self._reported_voice.message or VOICE_UNAVAILABLE_MESSAGE,
+        )
+
+    def _turn_judge(self) -> TurnJudge:
+        if self._judge is None:
+            self._judge = self._judge_factory()
+        return self._judge
+
+    async def _conversation_start(self) -> None:
+        if not self._voice_ready():
+            await self._send(self._voice_problem(None))
+            return
+        if self._detector is None:
+            self._detector = self._detector_factory()
+        self._watch = ConversationWatch(self._detector)
+
+    async def _conversation_stop(self) -> None:
+        self._watch = None
+        if self._listening and self._listening.id in self._turns:
+            await self._end_listening("cancelled")
 
     async def _listen_start(self, message: ListenStart) -> None:
-        voice_on = self._configuration is not None and self._configuration.voice.enabled
-        if not voice_on or self._voice is None or self._voice.models is None:
-            status = self._reported_voice
-            await self._send(
-                ErrorMessage(
-                    id=message.id,
-                    code="voice_unavailable",
-                    message=status.message or VOICE_UNAVAILABLE_MESSAGE,
-                )
-            )
+        if not self._voice_ready():
+            await self._send(self._voice_problem(message.id))
             await self._send(ListenEnd(id=message.id, reason="cancelled"))
             return
         if self._listening:
             await self._end_listening("cancelled")
         if self._detector is None:
             self._detector = self._detector_factory()
-        self._listening = Listening(message.id, self._detector)
+        self._listening = Listening(message.id, self._detector, self._turn_judge())
 
     async def _end_listening(self, reason: ListenEndReason) -> None:
         listening, self._listening = self._listening, None
@@ -187,8 +250,12 @@ class Session:
             return
         await self._send(ListenEnd(id=listening.id, reason=reason))
         if reason == "cancelled":
+            self._turns.discard(listening.id)
             return
+        if folder := recordings_folder():
+            self._in_background(asyncio.to_thread(save_turn, folder, listening.audio(), reason))
         if not listening.heard_speech:
+            self._turns.discard(listening.id)
             await self._send(
                 ErrorMessage(id=listening.id, code="no_speech", message=NO_SPEECH_MESSAGE)
             )
@@ -224,7 +291,11 @@ class Session:
         # A cancel, or a new question, arrived while Whisper was working.
         abandoned = listening.id in self._abandoned
         self._abandoned.discard(listening.id)
-        if abandoned or self._listening is not None:
+        # With the hotkey, a new question replaces this one. In conversation mode the student just
+        # went on speaking, and this question still gets its answer.
+        replaced = self._listening is not None and listening.id not in self._turns
+        self._turns.discard(listening.id)
+        if abandoned or replaced:
             return
         if not heard.text:
             await self._send(
@@ -238,9 +309,14 @@ class Session:
             transcribe_ms=round((asyncio.get_running_loop().time() - ended_at) * 1000),
         )
         await self._send(Transcript(id=listening.id, text=heard.text, lang=heard.lang))
+        # A spoken question interrupts the teacher, even speech that runs after the text.
+        if self._latest_answer is not None:
+            self._keep_only_heard(self._latest_answer)
+        self._hush()
         await self._ask(UserText(id=listening.id, text=heard.text), language=heard.lang)
 
     async def _cancel(self, question_id: str) -> None:
+        self._keep_only_heard(question_id)
         if speaker := self._speaking_after_text.pop(question_id, None):
             speaker.stop()
             return
@@ -254,6 +330,7 @@ class Session:
 
     async def close(self) -> None:
         self._listening = None
+        self._watch = None
         for speaker in self._speakers.values():
             speaker.stop()
         self._speakers.clear()
@@ -360,6 +437,7 @@ class Session:
             clock = self._clocks.get(event.id)
             if clock and clock.first_text_at is None and event.text.strip():
                 clock.first_text_at = asyncio.get_running_loop().time()
+            self._answer_chars[event.id] = self._answer_chars.get(event.id, 0) + len(event.text)
             await self._send_markup(event.id, self._parsers[event.id].feed(event.text))
         elif isinstance(event, ResponseFinished):
             await self._end(event.id, event.reason)
@@ -374,8 +452,18 @@ class Session:
             await self._send(ErrorMessage(id=event.id, code=code, message=text))
             await self._end(event.id, "error")
 
+    def _keep_only_heard(self, answer_id: str) -> None:
+        """When the student cut off a spoken answer, the history keeps only what they heard."""
+        speaker = self._spoken.get(answer_id)
+        report = self._heard.get(answer_id)
+        if speaker is None or self._conversation is None or (report and report.finished):
+            return
+        heard = speaker.parts[: report.parts if report else 0]
+        self._conversation.keep_only_heard(answer_id, " ".join(part.strip() for part in heard))
+
     async def _start(self, response_id: str) -> None:
         if response_id not in self._parsers:
+            self._latest_answer = response_id
             self._parsers[response_id] = MarkupParser()
             await self._send(ResponseStart(id=response_id))
             self._start_speaking(response_id)
@@ -386,14 +474,20 @@ class Session:
         voice = self._configuration.voice if self._configuration else None
         if not (voice and voice.enabled and voice.speak_answers and kokoro and self._send_audio):
             return
-        self._speakers[response_id] = Speaker(
+        speaker = self._speakers[response_id] = Speaker(
             response_id,
             kokoro,
             main_language=language,
             english_voice=voice.english_voice,
+            voices=voices_for(voice),
             send=self._send,
             send_audio=self._send_audio,
         )
+        self._spoken[response_id] = speaker
+        # Only the latest answers can still be cut off.
+        for old_id in list(self._spoken)[:-4]:
+            self._spoken.pop(old_id)
+            self._heard.pop(old_id, None)
 
     def _typed_language(self, text: str) -> SpokenLanguage:
         spoken = self._configuration.voice.spoken_language if self._configuration else "auto"
@@ -407,10 +501,16 @@ class Session:
         await self._start(response_id)
         await self._send_markup(response_id, self._parsers.pop(response_id).finish())
         pieces = self._answer_pieces.pop(response_id, [])
+        chars = self._answer_chars.pop(response_id, 0)
         if reason == "complete" and not any(piece.text.strip() for piece in pieces):
             # A provider can end an answer without a word. Saying nothing would leave the
             # student looking at the question, waiting for an answer that never comes.
-            logger.warning(f"Answer {response_id} came back empty from the provider")
+            ending = self._conversation.last_ending if self._conversation else None
+            how = f", {ending.describe()}" if ending else ""
+            logger.warning(
+                f"Answer {response_id} came back empty from the provider "
+                f"({chars} characters of text and tags{how})"
+            )
             await self._send(
                 ErrorMessage(
                     id=response_id, code="provider_unavailable", message=EMPTY_ANSWER_MESSAGE

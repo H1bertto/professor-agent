@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { ClientMessage } from '../shared/core-protocol'
 import { KeyVault } from './key-vault'
-import { DEFAULT_VOICE } from './settings'
+import { DEFAULT_TALK, DEFAULT_VOICE } from './settings'
 import { SettingsStore } from './settings-store'
 import { FakeCoreConnection, fakeCipher } from './test-helpers'
 import { CORE_OFFLINE_MESSAGE, TutorSettings } from './tutor-settings'
@@ -41,6 +41,7 @@ describe('TutorSettings', () => {
       provider: null,
       persona: PERSONA,
       voice: DEFAULT_VOICE,
+      talk: DEFAULT_TALK,
       keyStorageAvailable: true
     })
     expect(tutor().configureMessage()).toEqual({
@@ -69,6 +70,7 @@ describe('TutorSettings', () => {
         },
         persona: { name: 'Ana', instructions: '' },
         voice: DEFAULT_VOICE,
+        talk: DEFAULT_TALK,
         keyStorageAvailable: true
       }
     })
@@ -163,6 +165,23 @@ describe('TutorSettings', () => {
       ok: false,
       message: 'The voice settings could not be read.'
     })
+  })
+
+  it('saves the talk settings, unless they cannot be applied', () => {
+    const applied: string[] = []
+    const settings = new TutorSettings(store, new KeyVault(fakeCipher()), core, 1000, (talk) => {
+      applied.push(talk.hotkey)
+      return talk.hotkey === 'F9' ? 'Another app already uses this shortcut.' : null
+    })
+    const talk = { ...DEFAULT_TALK, mode: 'conversation' as const, hotkey: 'F8', hotkeyLabel: 'F8' }
+    expect(settings.save({ provider: null, persona: PERSONA, talk }).ok).toBe(true)
+    expect(store.get().talk).toEqual(talk)
+
+    expect(
+      settings.save({ provider: null, persona: PERSONA, talk: { ...talk, hotkey: 'F9' } })
+    ).toEqual({ ok: false, message: 'Another app already uses this shortcut.' })
+    expect(store.get().talk.hotkey).toBe('F8')
+    expect(applied).toEqual(['F8', 'F9'])
   })
 
   it('leaves the provider out when the saved key cannot be opened', async () => {

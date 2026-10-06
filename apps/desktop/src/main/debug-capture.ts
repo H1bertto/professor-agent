@@ -1,9 +1,21 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import { writeFile } from 'fs/promises'
+import { join } from 'path'
 import { IpcChannel, type CoreConnectionStatus } from '../shared/api'
 import type { AvatarChoice } from '../shared/avatar'
 import type { ProviderConfig } from '../shared/core-protocol'
 import { findBuiltinAvatar } from './avatar-library'
+
+/**
+ * Development helper: PROFESSOR_DEV_PROFILE=<name> keeps settings and the single-instance lock
+ * apart from the student's, so a check can run while the app is open. Call it before the lock.
+ * Packaged builds ignore it.
+ */
+export function applyDevProfile(env = process.env): void {
+  const name = env.PROFESSOR_DEV_PROFILE
+  if (app.isPackaged || !name || !/^[a-z0-9-]{1,32}$/.test(name)) return
+  app.setPath('userData', join(app.getPath('appData'), `professor-agent-${name}`))
+}
 
 /**
  * Development helper: PROFESSOR_AVATAR=<built-in id> (for example `builtin:chalk`) shows that

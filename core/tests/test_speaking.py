@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any
+from typing import Any, get_args
 
 import numpy as np
 import pytest
@@ -7,23 +7,30 @@ from voice_fakes import FakeKokoro
 
 from professor_core.markup import TextPiece
 from professor_core.protocol import (
+    VOICE_OFF,
     AudioKind,
     CoreMessage,
+    NativeVoice,
     SpeechEnd,
     SpeechSegment,
     SpeechStart,
+    TeacherVoice,
     decode_audio,
 )
 from professor_core.speaking import (
     FRAME_SAMPLES,
     NATIVE_ENGLISH_VOICE,
+    NATIVE_VOICES,
     TEACHER_VOICE,
+    TEACHER_VOICES,
     Piece,
     SentenceSplitter,
     Speaker,
+    Voices,
     guess_language,
     pcm_frames,
     render_sentence,
+    voices_for,
 )
 
 
@@ -150,6 +157,26 @@ def test_a_space_between_two_english_spans_is_kept() -> None:
     teacher = FakeKokoro()
     parts = render_sentence(teacher, sentence, "teacher")
     assert [part.text for part in parts] == ["since for são diferentes."]
+
+
+def test_speaks_with_the_chosen_voices() -> None:
+    sentence = [Piece("Em inglês dizemos ", "pt"), Piece("I have been living here", "en")]
+    voices = Voices(teacher="pm_alex", native="am_michael")
+
+    teacher = FakeKokoro()
+    render_sentence(teacher, sentence, "teacher", voices)
+    assert [call["voice"] for call in teacher.calls] == ["pm_alex"]
+
+    native = FakeKokoro()
+    render_sentence(native, sentence, "native", voices)
+    assert [call["voice"] for call in native.calls] == ["pm_alex", "am_michael"]
+
+
+def test_every_voice_in_the_protocol_has_a_kokoro_voice() -> None:
+    assert set(TEACHER_VOICES) == set(get_args(TeacherVoice))
+    assert set(NATIVE_VOICES) == set(get_args(NativeVoice))
+    config = VOICE_OFF.model_copy(update={"teacher_voice": "alex", "native_voice": "puck"})
+    assert voices_for(config) == Voices(teacher="pm_alex", native="am_puck")
 
 
 def test_sends_speech_as_short_16_bit_frames() -> None:

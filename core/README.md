@@ -24,6 +24,7 @@ uv run professor-core
 | `PROFESSOR_CORE_TOKEN` | unset | When set, the desktop app must send the same token in `hello`. |
 | `PROFESSOR_CORE_LOG_LEVEL` | `INFO` | `DEBUG` logs whole conversations, so use it only for debugging. |
 | `PROFESSOR_CORE_MODELS` | `~/.local/share/professor-agent/models` | Where the speech models are kept. |
+| `PROFESSOR_CORE_RECORD_TURNS` | not set | A folder where the core saves each spoken question as a WAV file, to tune turn detection. For development only: it keeps the student's voice on disk. |
 
 ## Voice
 

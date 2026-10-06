@@ -82,6 +82,8 @@ export function statusLine(
       return { text: 'Listening...', kind: 'thinking' }
     case 'waiting':
       return { text: 'Thinking...', kind: 'thinking' }
+    case 'notice':
+      return { text: answer.error ?? '', kind: 'note' }
     case 'cancelled':
       return { text: 'Stopped.', kind: 'note' }
     case 'error':
