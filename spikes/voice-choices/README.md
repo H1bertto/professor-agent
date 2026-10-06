@@ -21,4 +21,4 @@ The answer is "Boa pergunta! Usamos *since* para o ponto de partida. Por exemplo
 
 ## Results
 
-Waiting for the maintainer to listen and choose.
+The maintainer chose to offer all of them: Dora and Alex for the teacher, and Heart, Bella, Michael, Fenrir, Puck, and Adam for the native English voice. Dora and Heart stay the defaults.

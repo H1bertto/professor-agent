@@ -44,4 +44,31 @@ uv run --project core --extra voice python spikes/smart-turn/run.py pause-1.wav 
 - Almost every unfinished one was taken as finished. This says little about real pauses: Kokoro reads any text as a whole sentence, with the falling tone of an ending, and Smart Turn listens to the tone more than to the words.
 - A check takes about 140 ms on one CPU core, once per pause, which is fast enough.
 
-**Not decided yet.** Round 2 uses recordings of a real student pausing in the middle of sentences. The core saves them in development with `PROFESSOR_CORE_RECORD_TURNS`, see [`core/README.md`](../../core/README.md).
+### Round 2 (2026-10-06, the maintainer's voice)
+
+Ten questions said through the app with the hotkey, saved by the core with `PROFESSOR_CORE_RECORD_TURNS` (see [`core/README.md`](../../core/README.md)). In the unfinished ones the speaker stopped as if thinking, until the core cut the question after 1.5 s of silence. The recordings stay on the maintainer's computer.
+
+| What was said | Finished? | Smart Turn | Right |
+|---|---|---|---|
+| Qual é a diferença entre since e for? | yes | 0.95 | yes |
+| Ontem eu estudei frações com a minha irmã. | yes | 0.35 | NO |
+| What does since mean? | yes | 0.82 | yes |
+| I went to the beach last weekend. | yes | 0.29 | NO |
+| Ontem eu fui ao mercado e... | no | 0.01 | yes |
+| Eu queria saber se... | no | 0.07 | yes |
+| Quando eu era criança, eu... | no | 0.02 | yes |
+| Yesterday I went to the... um... | no | 0.01 | yes |
+| I would like to know if... | no | 0.34 | yes |
+| So, I think that... | no | 0.04 | yes |
+
+- Every unfinished sentence was right: Smart Turn never took a thinking pause for an ending.
+- Two of the four finished statements were taken as unfinished. That mistake only costs time: the core waits for more silence before it answers.
+
+## Decision
+
+Smart Turn decides the end of a turn, in conversation mode and with the hotkey:
+
+- after a short pause, Smart Turn checks the speech. If the student finished, the turn ends at once;
+- if not, the core keeps listening, and the turn ends anyway after 3 seconds of silence.
+
+So finished questions get an answer sooner than with the fixed 1.5 seconds, and a student who stops to think is not cut off.
