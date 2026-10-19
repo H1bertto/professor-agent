@@ -71,6 +71,11 @@ export function scheduleDevAsk(
 
 const POSE_SETTLE_MS = 900
 
+/** Captures keep the avatar looking ahead, so they do not depend on where the mouse is. */
+export function overlayCaptureRequested(env = process.env): boolean {
+  return !app.isPackaged && Boolean(env.PROFESSOR_CAPTURE_OVERLAY || env.PROFESSOR_CAPTURE_SCREEN)
+}
+
 /**
  * Development helper to check the overlay without recording the whole screen.
  *

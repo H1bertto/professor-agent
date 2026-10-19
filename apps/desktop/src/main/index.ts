@@ -11,6 +11,7 @@ import {
   devAvatarOverride,
   devProviderOverride,
   scheduleDevAsk,
+  overlayCaptureRequested,
   scheduleOverlayCapture,
   applyDevProfile
 } from './debug-capture'
@@ -91,7 +92,9 @@ async function start(): Promise<void> {
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
   guardPermissions(overlay)
   registerOverlayControls(overlay, (overlayBounds) => settings.update({ overlayBounds }))
-  const stopCursorTracking = startCursorTracking(overlay)
+  const stopCursorTracking = overlayCaptureRequested()
+    ? () => undefined
+    : startCursorTracking(overlay)
 
   const sendToOverlay = (channel: string, payload: unknown): void => {
     if (!overlay.isDestroyed()) overlay.webContents.send(channel, payload)
