@@ -218,6 +218,78 @@ button:disabled {
   cursor: default;
 }
 
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.avatar-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 8px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.avatar-card:hover {
+  border-color: var(--muted);
+}
+
+.avatar-card:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+}
+
+.avatar-card:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.avatar-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.avatar-card img,
+.avatar-placeholder {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
+}
+
+.avatar-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.avatar-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.avatar-kind {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
 .credits {
   margin-top: auto;
   color: var(--muted);

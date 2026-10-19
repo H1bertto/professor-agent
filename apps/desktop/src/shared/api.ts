@@ -1,6 +1,6 @@
 // Types and channel names shared by the main, preload, and renderer processes.
 
-import type { AvatarConfig, AvatarState, Emotion, LookTarget } from './avatar'
+import type { AvatarConfig, AvatarKind, AvatarState, Emotion, LookTarget } from './avatar'
 import type { PersonaConfig, Segment, VoiceConfig, VoiceState } from './core-protocol'
 import type { ProviderPresetId } from './providers'
 
@@ -152,6 +152,22 @@ export interface SettingsForm {
 
 export type SaveResult = { ok: true; settings: SettingsView } | { ok: false; message: string }
 
+/** An avatar as the settings window shows it. */
+export interface AvatarCard {
+  id: string
+  kind: AvatarKind
+  name: string
+  /** A picture of the avatar, as a data URL or an `avatar://` URL, or `null` without one. */
+  thumbnail: string | null
+  /** Shipped with the app, not imported by the student. */
+  builtin: boolean
+}
+
+export interface AvatarPickerView {
+  avatars: AvatarCard[]
+  currentId: string
+}
+
 export interface ProviderTestResult {
   ok: boolean
   models: string[]
@@ -167,6 +183,10 @@ export const IpcChannel = {
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
   settingsTestProvider: 'settings:test-provider',
+  settingsAvatars: 'settings:avatars',
+  settingsAvatarsChanged: 'settings:avatars-changed',
+  settingsSelectAvatar: 'settings:select-avatar',
+  settingsImportAvatar: 'settings:import-avatar',
   avatarGet: 'avatar:get',
   avatarChanged: 'avatar:changed',
   overlayReady: 'overlay:ready',
@@ -250,6 +270,13 @@ export interface SettingsApi {
   onCoreStatus(listener: (status: CoreStatus) => void): () => void
   getVoiceStatus(): Promise<VoiceStatusView>
   onVoiceStatus(listener: (status: VoiceStatusView) => void): () => void
+  getAvatars(): Promise<AvatarPickerView>
+  /** The avatars changed, for example after an import or a choice in the tray menu. */
+  onAvatars(listener: (view: AvatarPickerView) => void): () => void
+  /** Shows this avatar at once and saves the choice. */
+  selectAvatar(id: string): Promise<void>
+  /** Asks for a VRM file or a PNGTuber folder, then imports and shows it. */
+  importAvatar(kind: AvatarKind): Promise<void>
 }
 
 /** API that the preload script exposes to the renderer as `window.professor`. */
