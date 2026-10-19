@@ -25,7 +25,7 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
-    "generate:avatars": "node scripts/generate-2d-avatars.mts"
+    "generate:avatars": "node scripts/generate-2d-avatars.mts && node scripts/generate-hoot-vrm.mts"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
