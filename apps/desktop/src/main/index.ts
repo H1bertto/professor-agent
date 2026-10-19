@@ -221,7 +221,7 @@ async function start(): Promise<void> {
     ask: (question) => tutor.ask(question),
     cancel: () => tutor.cancel()
   })
-  scheduleOverlayCapture(overlay, companions.bubbleWindow)
+  scheduleOverlayCapture(overlay, companions.bubbleWindow, setPose)
   scheduleDevAsk(core, (question) => tutor.ask(question))
 
   const tray = createTray({

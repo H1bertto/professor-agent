@@ -1,8 +1,8 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, screen } from 'electron'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
-import { IpcChannel, type CoreConnectionStatus } from '../shared/api'
-import type { AvatarChoice } from '../shared/avatar'
+import { IpcChannel, type AvatarPose, type CoreConnectionStatus } from '../shared/api'
+import { isEmotion, type AvatarChoice } from '../shared/avatar'
 import type { ProviderConfig } from '../shared/core-protocol'
 import { findBuiltinAvatar } from './avatar-library'
 
@@ -69,6 +69,8 @@ export function scheduleDevAsk(
   })
 }
 
+const POSE_SETTLE_MS = 900
+
 /**
  * Development helper to check the overlay without recording the whole screen.
  *
@@ -76,6 +78,8 @@ export function scheduleDevAsk(
  * - PROFESSOR_CAPTURE_SCREEN=<file.png> saves the screen area under the overlay window only,
  *   to check that the transparency blends with the apps behind it.
  * - PROFESSOR_CAPTURE_BUBBLE=<file.png> saves what the answer bubble page renders.
+ * - PROFESSOR_CAPTURE_POSES=<emotion>,... with PROFESSOR_CAPTURE_OVERLAY also saves the overlay
+ *   with each emotion, as <file>-<emotion>.png. `talking` captures the neutral face talking.
  * - PROFESSOR_CAPTURE_EXIT=1 quits the app after the captures.
  *
  * Captures run a moment after the avatar is ready. Packaged builds ignore these variables.
@@ -83,6 +87,7 @@ export function scheduleDevAsk(
 export function scheduleOverlayCapture(
   window: BrowserWindow,
   bubble: BrowserWindow,
+  preview: (pose: Partial<AvatarPose>) => void,
   env = process.env
 ): void {
   const pageTarget = env.PROFESSOR_CAPTURE_OVERLAY
@@ -91,11 +96,25 @@ export function scheduleOverlayCapture(
   if ((!pageTarget && !screenTarget && !bubbleTarget) || app.isPackaged) return
 
   const delayMs = Number(env.PROFESSOR_CAPTURE_DELAY_MS ?? 2000)
+  const capturePage = async (target: string): Promise<void> => {
+    const image = await window.webContents.capturePage()
+    await writeFile(target, image.toPNG())
+  }
+  const capturePoses = async (target: string): Promise<void> => {
+    for (const pose of (env.PROFESSOR_CAPTURE_POSES ?? '').split(',')) {
+      if (pose !== 'talking' && !isEmotion(pose)) continue
+      preview(pose === 'talking' ? { emotion: 'neutral', talking: true } : { emotion: pose })
+      // Expressions ease in over about half a second.
+      await new Promise((resolve) => setTimeout(resolve, POSE_SETTLE_MS))
+      await capturePage(target.replace(/(\.png)?$/i, `-${pose}.png`))
+      preview({ emotion: 'neutral', talking: false })
+    }
+  }
   ipcMain.once(IpcChannel.overlayReady, () => {
     setTimeout(async () => {
       if (pageTarget) {
-        const image = await window.webContents.capturePage()
-        await writeFile(pageTarget, image.toPNG())
+        await capturePage(pageTarget)
+        await capturePoses(pageTarget)
       }
       if (screenTarget) await captureScreenUnderWindow(window, screenTarget)
       // A hidden window draws nothing, so capturing it would wait forever.
