@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CoreStatus, SettingsView, VoiceStatusView } from '../../shared/api'
+import { AvatarPicker } from './AvatarPicker'
 import { SettingsForm } from './SettingsForm'
 
 function describe(core: CoreStatus): string {
@@ -52,6 +53,8 @@ function App(): React.JSX.Element {
         </p>
       </header>
 
+      <AvatarPicker />
+
       {view ? (
         <SettingsForm
           view={view}
@@ -64,11 +67,11 @@ function App(): React.JSX.Element {
       )}
 
       <footer className="credits">
-        3D avatar: Seed-san model by VirtualCast, Inc. (
+        Seed-san model by VirtualCast, Inc., and Professor model by Hinttz, under the{' '}
         <a href="https://vrm.dev/licenses/1.0/" target="_blank" rel="noreferrer">
           VRM Public License 1.0
         </a>
-        )
+        . Hoot, Lia, Theo, and Chalk by the Professor Agent contributors.
       </footer>
     </main>
   )

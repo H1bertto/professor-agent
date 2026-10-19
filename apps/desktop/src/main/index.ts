@@ -1,7 +1,22 @@
-import { app, dialog, globalShortcut, ipcMain, screen, type IpcMainInvokeEvent } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  screen,
+  type IpcMainInvokeEvent
+} from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { IpcChannel, type AvatarPose, type CoreStatus, type TalkSettings } from '../shared/api'
-import type { AvatarChoice } from '../shared/avatar'
+import {
+  IpcChannel,
+  type AvatarPickerView,
+  type AvatarPose,
+  type CoreStatus,
+  type TalkSettings
+} from '../shared/api'
+import type { AvatarChoice, AvatarKind } from '../shared/avatar'
+import { avatarCards } from './avatar-cards'
 import { avatarOptions, effectiveAvatar, resolveAvatarConfig } from './avatar-library'
 import { handleAvatarProtocol, registerAvatarScheme } from './avatar-protocol'
 import { createCompanionWindows } from './companion-windows'
@@ -11,6 +26,7 @@ import {
   devAvatarOverride,
   devProviderOverride,
   scheduleDevAsk,
+  overlayCaptureRequested,
   scheduleOverlayCapture,
   applyDevProfile
 } from './debug-capture'
@@ -91,20 +107,31 @@ async function start(): Promise<void> {
   const overlay = createOverlayWindow(initialOverlayBounds(settings.get().overlayBounds))
   guardPermissions(overlay)
   registerOverlayControls(overlay, (overlayBounds) => settings.update({ overlayBounds }))
-  const stopCursorTracking = startCursorTracking(overlay)
+  const stopCursorTracking = overlayCaptureRequested()
+    ? () => undefined
+    : startCursorTracking(overlay)
 
   const sendToOverlay = (channel: string, payload: unknown): void => {
     if (!overlay.isDestroyed()) overlay.webContents.send(channel, payload)
   }
 
+  const avatarPicker = async (): Promise<AvatarPickerView> => ({
+    avatars: await avatarCards(avatarOptions(userAvatars), userAvatars, roots),
+    currentId: effectiveAvatar(currentChoice(), userAvatars).id
+  })
+
   const selectAvatar = (avatar: AvatarChoice): void => {
     settings.update({ avatar })
     sendToOverlay(IpcChannel.avatarChanged, resolveAvatarConfig(avatar, userAvatars))
     tray.refresh()
+    void avatarPicker().then((view) =>
+      sendToSettingsWindow(IpcChannel.settingsAvatarsChanged, view)
+    )
   }
 
-  const importAvatar = async (kind: 'vrm' | 'pngtuber'): Promise<void> => {
-    const result = await dialog.showOpenDialog(
+  /** `parent` is the window the file dialog belongs to, if any. */
+  const importAvatar = async (kind: AvatarKind, parent?: BrowserWindow): Promise<void> => {
+    const options: Electron.OpenDialogOptions =
       kind === 'vrm'
         ? {
             title: 'Import a VRM avatar',
@@ -112,7 +139,9 @@ async function start(): Promise<void> {
             properties: ['openFile']
           }
         : { title: 'Import a PNGTuber folder', properties: ['openDirectory'] }
-    )
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options)
     const [path] = result.filePaths
     if (result.canceled || !path) return
     try {
@@ -129,6 +158,16 @@ async function start(): Promise<void> {
       )
     }
   }
+
+  registerAvatarHandlers({
+    picker: avatarPicker,
+    select: (id) => {
+      const avatar = avatarOptions(userAvatars).find((option) => option.id === id)
+      if (!avatar) throw new Error('This avatar is no longer in the library.')
+      selectAvatar({ kind: avatar.kind, id: avatar.id })
+    },
+    import: importAvatar
+  })
 
   const setPose = (changes: Partial<AvatarPose>): void => {
     pose = { ...pose, ...changes }
@@ -221,7 +260,10 @@ async function start(): Promise<void> {
     ask: (question) => tutor.ask(question),
     cancel: () => tutor.cancel()
   })
-  scheduleOverlayCapture(overlay, companions.bubbleWindow)
+  scheduleOverlayCapture(
+    { overlay, bubble: companions.bubbleWindow, openSettings: showSettingsWindow },
+    setPose
+  )
   scheduleDevAsk(core, (question) => tutor.ask(question))
 
   const tray = createTray({
@@ -295,13 +337,14 @@ async function start(): Promise<void> {
 }
 
 /** The provider settings hold the API key, so only the settings window may reach them. */
+function fromSettingsWindow(event: IpcMainInvokeEvent): void {
+  if (!isSettingsWindow(event.sender)) throw new Error('Only the settings window can do this.')
+}
+
 function registerSettingsHandlers(
   tutorSettings: TutorSettings,
   coreStatus: () => CoreStatus
 ): void {
-  const fromSettingsWindow = (event: IpcMainInvokeEvent): void => {
-    if (!isSettingsWindow(event.sender)) throw new Error('Only the settings window can do this.')
-  }
   ipcMain.handle(IpcChannel.coreStatus, () => coreStatus())
   ipcMain.handle(IpcChannel.settingsGet, (event) => {
     fromSettingsWindow(event)
@@ -314,6 +357,28 @@ function registerSettingsHandlers(
   ipcMain.handle(IpcChannel.settingsTestProvider, (event, provider: unknown) => {
     fromSettingsWindow(event)
     return tutorSettings.testProvider(provider)
+  })
+}
+
+/** The avatar section of the settings window: the cards, the choice, and the imports. */
+function registerAvatarHandlers(avatars: {
+  picker(): Promise<AvatarPickerView>
+  select(id: string): void
+  import(kind: AvatarKind, parent?: BrowserWindow): Promise<void>
+}): void {
+  ipcMain.handle(IpcChannel.settingsAvatars, (event) => {
+    fromSettingsWindow(event)
+    return avatars.picker()
+  })
+  ipcMain.handle(IpcChannel.settingsSelectAvatar, (event, id: unknown) => {
+    fromSettingsWindow(event)
+    if (typeof id !== 'string') throw new Error('Choose an avatar.')
+    avatars.select(id)
+  })
+  ipcMain.handle(IpcChannel.settingsImportAvatar, (event, kind: unknown) => {
+    fromSettingsWindow(event)
+    if (kind !== 'vrm' && kind !== 'pngtuber') throw new Error('Choose a VRM file or a folder.')
+    return avatars.import(kind, BrowserWindow.fromWebContents(event.sender) ?? undefined)
   })
 }
 

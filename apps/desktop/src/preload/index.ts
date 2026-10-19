@@ -17,7 +17,11 @@ const api: ProfessorApi = {
     getCoreStatus: () => ipcRenderer.invoke(IpcChannel.coreStatus),
     onCoreStatus: (listener) => subscribe(IpcChannel.coreStatusChanged, listener),
     getVoiceStatus: () => ipcRenderer.invoke(IpcChannel.voiceStatus),
-    onVoiceStatus: (listener) => subscribe(IpcChannel.voiceStatusChanged, listener)
+    onVoiceStatus: (listener) => subscribe(IpcChannel.voiceStatusChanged, listener),
+    getAvatars: () => ipcRenderer.invoke(IpcChannel.settingsAvatars),
+    onAvatars: (listener) => subscribe(IpcChannel.settingsAvatarsChanged, listener),
+    selectAvatar: (id) => ipcRenderer.invoke(IpcChannel.settingsSelectAvatar, id),
+    importAvatar: (kind) => ipcRenderer.invoke(IpcChannel.settingsImportAvatar, kind)
   },
   overlay: {
     getAvatar: () => ipcRenderer.invoke(IpcChannel.avatarGet),

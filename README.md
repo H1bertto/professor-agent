@@ -12,7 +12,7 @@ Most open source AI avatar projects are companions. Professor Agent is built to 
 
 ## Planned features
 
-- **Avatar overlay.** A VRM (3D) or PNGTuber-style (2D) character on top of any app. Clicks pass through everything except the avatar.
+- **Avatar overlay.** A VRM (3D) or PNGTuber-style (2D) character on top of any app. Clicks pass through everything except the avatar. Pick one of seven built-in teachers, such as Hoot, the owl mascot, or bring your own from VRoid Studio ([avatars](docs/avatars.md)).
 - **Voice conversation** in Brazilian Portuguese and English, and you can interrupt it at any time.
 - **Language practice.** Immersion conversations, corrections shown as cards on the side, answers adjusted to your level (CEFR A1 to C2).
 - **Tutor mode for any subject**, with a board panel for notes, formulas, and code.

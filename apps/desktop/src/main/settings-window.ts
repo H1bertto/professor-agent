@@ -5,11 +5,11 @@ import { hardenWebContents, loadRendererPage, PRELOAD_PATH } from './window-help
 let settingsWindow: BrowserWindow | null = null
 
 /** Opens the settings window, or brings it to the front if it is already open. */
-export function showSettingsWindow(): void {
+export function showSettingsWindow(): BrowserWindow {
   if (settingsWindow) {
     settingsWindow.show()
     settingsWindow.focus()
-    return
+    return settingsWindow
   }
 
   settingsWindow = new BrowserWindow({
@@ -30,6 +30,7 @@ export function showSettingsWindow(): void {
   settingsWindow.on('closed', () => (settingsWindow = null))
   hardenWebContents(settingsWindow)
   loadRendererPage(settingsWindow, 'index.html')
+  return settingsWindow
 }
 
 /** Only the settings window may read or change the provider settings. */

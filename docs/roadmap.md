@@ -17,6 +17,7 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 - [x] Idle animation: blink, breathing, look at the cursor
 - [x] Drag to move, scroll to resize, tray menu
 - [x] Import your own VRM or PNGTuber avatar ([guide](avatars.md), [ADR 0002](adr/0002-avatar-overlay.md))
+- [x] Seven built-in avatars, chosen in the settings window: Professor, Hoot (3D and 2D), Seed-san, Lia, Theo, and Chalk ([avatars](avatars.md))
 
 ### Phase 2: Text chat with your AI provider
 - [x] Python core with FastAPI and a local WebSocket ([protocol](protocol.md))
@@ -61,3 +62,4 @@ Professor Agent is built in small phases. Each phase ends with something that wo
 - Custom wake words
 - Same voice in every language
 - Avatar generated from an image
+- Online avatar gallery, with free VRM models such as the ones listed by [Open Source Avatars](https://opensourceavatars.com)
