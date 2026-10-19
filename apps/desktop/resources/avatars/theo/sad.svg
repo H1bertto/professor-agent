@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="300" height="400">
+  <path d="M30 400 C 36 322, 90 290, 150 288 C 210 290, 264 322, 270 400 Z" fill="#3d6b4f"/><path d="M60 324 Q 150 310 240 324" stroke="#2f5640" stroke-width="3" fill="none" opacity="0.6"/><path d="M60 348 Q 150 334 240 348" stroke="#2f5640" stroke-width="3" fill="none" opacity="0.6"/><path d="M60 372 Q 150 358 240 372" stroke="#2f5640" stroke-width="3" fill="none" opacity="0.6"/><path d="M60 396 Q 150 382 240 396" stroke="#2f5640" stroke-width="3" fill="none" opacity="0.6"/>
+  <rect x="132" y="250" width="36" height="52" rx="12" fill="#d9a27c"/>
+  <path d="M116 292 Q 150 318 184 292 L 184 302 Q 150 330 116 302 Z" fill="#2f5640"/>
+  <path d="M126 290 L 150 306 L 136 318 Z" fill="#f5f1e8"/>
+  <path d="M174 290 L 150 306 L 164 318 Z" fill="#f5f1e8"/>
+  <circle cx="78" cy="190" r="12" fill="#f0c19c"/>
+  <circle cx="222" cy="190" r="12" fill="#f0c19c"/>
+  <ellipse cx="150" cy="186" rx="72" ry="82" fill="#f0c19c"/>
+  <path d="M78 176 C 76 206, 86 252, 112 270 C 128 282, 172 282, 188 270 C 214 252, 224 206, 222 176 C 214 196, 206 212, 192 218 C 178 210, 122 210, 108 218 C 94 212, 86 196, 78 176 Z" fill="#8a4b2a"/>
+  <ellipse cx="150" cy="242" rx="24" ry="14" fill="#e3a98a"/>
+  <path d="M78 176 C 70 116, 104 90, 150 92 C 196 90, 232 116, 222 176 C 216 150, 210 136, 196 126 C 170 136, 132 124, 112 114 C 96 126, 86 146, 78 176 Z" fill="#8a4b2a"/>
+  <path d="M112 114 C 128 118, 150 112, 162 104" stroke="#6e3a20" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M150 190 Q 144 206 153 209" stroke="#d9a27c" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M105.0 157.3 L139.0 146.7" stroke="#6e3a20" stroke-width="7" stroke-linecap="round"/>
+  <path d="M161.0 146.7 L195.0 157.3" stroke="#6e3a20" stroke-width="7" stroke-linecap="round"/>
+  <ellipse cx="122" cy="182" rx="5" ry="7" fill="#2b2b2b"/>
+  <circle cx="123.8" cy="179.8" r="1.6" fill="#ffffff"/>
+  <ellipse cx="178" cy="182" rx="5" ry="7" fill="#2b2b2b"/>
+  <circle cx="179.8" cy="179.8" r="1.6" fill="#ffffff"/>
+  <path d="M136 246 Q 150 236 164 246" stroke="#6b2626" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M150 228 C 140 220, 120 222, 112 236 C 124 232, 138 234, 150 236 C 162 234, 176 232, 188 236 C 180 222, 160 220, 150 228 Z" fill="#8a4b2a"/>
+</svg>

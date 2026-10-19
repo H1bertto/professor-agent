@@ -21,6 +21,9 @@ interface BuiltinAvatar extends AvatarOption {
 /** Avatars shipped with the app, served from `resources/avatars`. */
 export const BUILTIN_AVATARS: readonly BuiltinAvatar[] = [
   { id: 'builtin:seed-san', kind: 'vrm', name: 'Seed-san', url: 'avatar://builtin/seed-san.vrm' },
+  { id: 'builtin:hoot', kind: 'pngtuber', name: 'Hoot', url: 'avatar://builtin/hoot/avatar.json' },
+  { id: 'builtin:lia', kind: 'pngtuber', name: 'Lia', url: 'avatar://builtin/lia/avatar.json' },
+  { id: 'builtin:theo', kind: 'pngtuber', name: 'Theo', url: 'avatar://builtin/theo/avatar.json' },
   {
     id: 'builtin:chalk',
     kind: 'pngtuber',
@@ -29,7 +32,7 @@ export const BUILTIN_AVATARS: readonly BuiltinAvatar[] = [
   }
 ]
 
-const DEFAULT_AVATAR = BUILTIN_AVATARS[0]
+const DEFAULT_AVATAR = BUILTIN_AVATARS.find((item) => item.id === 'builtin:seed-san')!
 
 export function findBuiltinAvatar(id: string): AvatarChoice | null {
   const avatar = BUILTIN_AVATARS.find((item) => item.id === id)

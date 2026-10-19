@@ -68,7 +68,7 @@ The model `slow-model` streams a longer answer slowly, to watch the streaming.
 
 With the core's voice extra, the same fake provider checks the whole voice path without a microphone: set `PROFESSOR_DEV_VOICE=teacher`, `PROFESSOR_DEV_MIC_FILE` to a recorded question, `PROFESSOR_DEV_TALK=1`, and `PROFESSOR_CAPTURE_SPEECH` to the WAV file to save.
 
-`npm run generate:chalk` redraws the Chalk avatar from [`scripts/generate-chalk-avatar.mts`](scripts/generate-chalk-avatar.mts).
+`npm run generate:avatars` redraws the built-in 2D avatars, Chalk, Lia, Theo, and Hoot, from [`scripts/generate-2d-avatars.mts`](scripts/generate-2d-avatars.mts). Each character is in [`scripts/avatars`](scripts/avatars).
 
 ## Checks
 

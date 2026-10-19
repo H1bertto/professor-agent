@@ -43,6 +43,9 @@ describe('avatarOptions and effectiveAvatar', () => {
   it('lists built-in avatars before imported ones', () => {
     expect(avatarOptions(USER).map((option) => option.id)).toEqual([
       'builtin:seed-san',
+      'builtin:hoot',
+      'builtin:lia',
+      'builtin:theo',
       'builtin:chalk',
       'user:my-tutor',
       'user:sketch'
