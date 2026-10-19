@@ -23,7 +23,10 @@ export function AvatarPicker(): React.JSX.Element {
 
   const choose = (id: string): void => {
     setView((current) => current && { ...current, currentId: id })
-    void window.professor.settings.selectAvatar(id)
+    // If the avatar is gone, show the avatars as they are.
+    window.professor.settings
+      .selectAvatar(id)
+      .catch(() => window.professor.settings.getAvatars().then(setView))
   }
 
   const importAvatar = async (kind: AvatarKind): Promise<void> => {
