@@ -20,6 +20,12 @@ interface BuiltinAvatar extends AvatarOption {
 
 /** Avatars shipped with the app, served from `resources/avatars`. */
 export const BUILTIN_AVATARS: readonly BuiltinAvatar[] = [
+  {
+    id: 'builtin:professor',
+    kind: 'vrm',
+    name: 'Professor',
+    url: 'avatar://builtin/professor.vrm'
+  },
   { id: 'builtin:hoot-3d', kind: 'vrm', name: 'Hoot', url: 'avatar://builtin/hoot.vrm' },
   { id: 'builtin:seed-san', kind: 'vrm', name: 'Seed-san', url: 'avatar://builtin/seed-san.vrm' },
   { id: 'builtin:hoot', kind: 'pngtuber', name: 'Hoot', url: 'avatar://builtin/hoot/avatar.json' },
