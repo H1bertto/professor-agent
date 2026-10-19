@@ -4,7 +4,7 @@ Um professor de estudos local e open source que fica na sua área de trabalho. E
 
 [Read in English](README.md)
 
-> **Status:** início do desenvolvimento. O avatar sobreposto e o chat por texto com o seu próprio provedor de IA já funcionam em builds de desenvolvimento, e a voz vem a seguir. Ainda não tem nada para instalar. Acompanhe pelo [roadmap](docs/roadmap.md).
+> **Status:** início do desenvolvimento. O avatar sobreposto, o chat por texto com o seu próprio provedor de IA, a voz com atalho e o modo conversa já funcionam em builds de desenvolvimento, e as aulas com memória vêm a seguir. Ainda não tem nada para instalar. Acompanhe pelo [roadmap](docs/roadmap.md).
 
 ## Por que mais um avatar com IA?
 
@@ -12,7 +12,7 @@ A maioria dos projetos open source de avatar com IA é de companhia. O Professor
 
 ## O que está planejado
 
-- **Avatar sobreposto.** Um personagem VRM (3D) ou estilo PNGTuber (2D) por cima de qualquer app. O clique passa por tudo, menos pelo avatar.
+- **Avatar sobreposto.** Um personagem VRM (3D) ou estilo PNGTuber (2D) por cima de qualquer app. O clique passa por tudo, menos pelo avatar. Escolha um dos sete professores que vêm com o app, como o Hoot, a coruja mascote, ou traga o seu do VRoid Studio ([avatares](docs/avatars.md)).
 - **Conversa por voz** em português e inglês, e dá para interromper a qualquer momento.
 - **Prática de idiomas.** Conversas de imersão, correções em cartões ao lado e respostas no seu nível (CEFR A1 a C2).
 - **Modo tutor para qualquer assunto**, com uma lousa para anotações, fórmulas e código.
